@@ -15,3 +15,15 @@ def cross_entropy(params, x, y, apply_fn, reg: float = 0.0):
     l2_norm_sq = tree_util.tree_reduce(lambda acc, leaf: acc + jnp.sum(leaf**2), params, 0.0)
     reg_loss = 0.5 * reg * l2_norm_sq
     return ce_loss + reg_loss
+
+
+@jax.jit
+def cross_entropy_generic(f_x, y):
+    """Computes the cross-entropy loss of a kernel ridge regression model"""
+    return -jnp.mean(jnp.sum(y * jax.nn.log_softmax(f_x), axis=1))
+
+
+@jax.jit
+def mean_squared_error(y_true, y_pred):
+    """Computes the mean squared error loss"""
+    return jnp.mean((y_true - y_pred)**2)
