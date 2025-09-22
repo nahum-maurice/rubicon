@@ -74,7 +74,8 @@ class ConvNet:
         """
         return self.init_fn is not None \
             and self.apply_fn is not None \
-            and self.kernel_fn is not None
+            and self.kernel_fn is not None \
+            and self.params is not None
         
     def initialize(self) -> 'ConvNet':
         """Initialize the model if not already initialized
@@ -110,6 +111,8 @@ class ConvNet:
                 layers.append(self.cfg.activation_function())
 
         self.init_fn, self.apply_fn, self.kernel_fn = stax.serial(*layers)
+        key = random.key(self.cfg.seed)
+        _, self.params = self.init_fn(key, input_shape=self.cfg.input_shape)
         return self
     
     def __call__(self) -> 'ConvNet':
@@ -149,9 +152,6 @@ class ConvNet:
             true, otherwise None.
         """
         if not self.initialized: self.initialize()
-        
-        key = random.key(self.cfg.seed)
-        _, self.params = self.init_fn(key, input_shape=self.cfg.input_shape)
 
         grad_loss = jit(grad(lambda p, x, y: cross_entropy(p, x, y, self.apply_fn, self.cfg.regularization)))
         optimizer = self.cfg.optimizer(learning_rate=self.cfg.learning_rate)
@@ -160,7 +160,6 @@ class ConvNet:
         training_history = TrainingHistory()
         for epoch in range(self.cfg.num_epochs):
             train_iter, test_iter = data_factory()
-
             train_loss_sum, train_acc_sum, num_batches = 0.0, 0.0, 0
 
             for x_batch, y_batch in train_iter:
@@ -208,11 +207,9 @@ class ConvNet:
                 training_history.test_accuracy.append(test_acc_avg)
 
             if verbose:
-                print(f"Epoch {epoch}: ")
-                print(f"\tTrain loss: {train_loss_avg:.4f}")
-                print(f"\tTrain accuracy: {train_acc_avg:.4f}")
+                s = f"Epoch {epoch:<4} | Train loss: {train_loss_avg:.4f} | Train accuracy: {train_acc_avg:.4f}"
                 if test_iter is not None:
-                    print(f"\tTest loss: {test_loss_avg:.4f}")
-                    print(f"\tTest accuracy: {test_acc_avg:.4f}")
+                    s += f" | Test loss: {test_loss_avg:.4f} | Test accuracy: {test_acc_avg:.4f}"
+                print(s)
         
         if return_metrics: return training_history
