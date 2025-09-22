@@ -38,9 +38,12 @@ class NeuralTangentKernel:
         # contrary to the params
         self._init_params = params
         self.params = params
+        # for now, i don't use this kernel function. but i keep it here so far
+        # until i figure out how it can ease the current implementation.
         self.kernel_fn = kernel_fn
         self.apply_fn = apply_fn
         self.cfg = config
+        self.K = None
 
     @property
     def init_params(self): return self._init_params
@@ -64,6 +67,8 @@ class NeuralTangentKernel:
 
     def train_with_kare(
         self,
+        x_train: jnp.ndarray,
+        y_train: jnp.ndarray,
         num_epochs: int = 10,
         steps_per_epoch: int = 100,
         start_from_init: bool = False,
@@ -76,25 +81,35 @@ class NeuralTangentKernel:
             num_epochs: The number of epochs to train for.
             start_from_init: Whether to start training from the initial params
         """
+        # This determines whether to consider starting with the initial set
+        # of parameters or whatever happened to the point of this function
+        # being called.
+        params = self.init_params if start_from_init else self.params
+
+        # Note that this computation of the NTK is firstly done here. The
+        # reason being that we couldn't have an empirical value for it without
+        # the specification of actual points.
+        self.K = self._compute_ntk(x_train, x_train, params)
+
+        # This computes the KARE objective for a given set of inputs and
+        # outputs.
         @jax.jit
-        def _kare_objective(x_train, y_train):
-            K = self._compute_ntk(x_train, x_train, self.params)
-            return kare(y_train, K, self.cfg.z)
+        def _kare_objective(y_train):
+            return kare(y_train, self.K, self.cfg.z)
         
         grad_kare = grad(_kare_objective)
         optimizer = self.cfg.optimizer(self.cfg.learning_rate)
-        if start_from_init:
-            opt_state = optimizer.init(self.init_params)
-        else:
-            opt_state = optimizer.init(self.params)
+        opt_state = optimizer.init(params)
         
         for epoch in range(num_epochs):
-            train_loss_sum, train_acc_sum, num_batches = 0
+            train_loss_sum, train_acc_sum, num_batches = 0.0, 0.0, 0
 
             for step in range(steps_per_epoch):
-                grads = grad_kare(self.params)
+                grads = grad_kare(y_train)
                 updates, opt_state = optimizer.update(grads, opt_state)
-                self.params = optax.apply_updates(self.params, updates)   
+                self.params = optax.apply_updates(self.params, updates)
+
+                batch_preds = self.predict()
 
     @jax.jit
     def _compute_ntk(self, x1, x2):
