@@ -110,7 +110,7 @@ class NeuralTangentKernel:
         def _kare_objective(x_train, y_train, params, z):
             K = self._compute_ntk(x_train, x_train, params, self.apply_fn)
             return kare(y_train, K, z)
-        
+
         grad_kare = grad(_kare_objective)
         optimizer = self.cfg.optimizer(self.cfg.learning_rate)
         opt_state = optimizer.init(params)
@@ -122,16 +122,28 @@ class NeuralTangentKernel:
             train_loss_sum, train_acc_sum, num_batches = 0.0, 0.0, 0
 
             for x_train, y_train in train_iter:
-                # This is computed as the current kernel matrix. it's redundant,
-                # but i don't yet have time to try to optimize it.
-                self.K = self._compute_ntk(x_train, x_train, params, self.apply_fn)
+                # This is computed as the current kernel matrix. it's
+                # redundant, but i don't yet have time to try to optimize it.
+                self.K = self._compute_ntk(
+                    x1=x_train,
+                    x2=x_train,
+                    params=params,
+                    apply_fn=self.apply_fn
+                )
                 grads = grad_kare(x_train, y_train, params, self.cfg.z)
                 updates, opt_state = optimizer.update(grads, opt_state)
                 params = optax.apply_updates(params, updates)
 
                 if not (return_metrics or verbose):
                     continue
-                batch_preds = self.predict(self.K, x_train, x_train, y_train, params, self.apply_fn)
+                batch_preds = self.predict(
+                    K_train=self.K,
+                    x_test=x_train,
+                    x_train=x_train,
+                    y_train=y_train,
+                    params=params,
+                    apply_fn=self.apply_fn
+                )
                 train_loss_sum += cross_entropy(batch_preds, y_train)
                 train_acc_sum += accuracy(batch_preds, y_train)
                 num_batches += 1
@@ -142,13 +154,20 @@ class NeuralTangentKernel:
             if not (return_metrics or verbose):
                 continue
             for x_test, y_test in test_iter:
-                batch_preds = self.predict(self.K, x_test, x_train, y_train, params, self.apply_fn)
+                batch_preds = self.predict(
+                    K_train=self.K,
+                    x_test=x_test,
+                    x_train=x_train,
+                    y_train=y_train,
+                    params=params,
+                    apply_fn=self.apply_fn
+                )
                 test_loss_sum += cross_entropy(batch_preds, y_test)
                 test_acc_sum += accuracy(batch_preds, y_test)
                 num_batches += 1
             test_loss_avg = test_loss_sum / num_batches or 0.0
             test_acc_avg = test_acc_sum / num_batches or 0.0
-
+       
             if return_metrics:
                 training_history.epochs.append(epoch)
                 training_history.train_loss.append(train_loss_avg)
@@ -157,9 +176,11 @@ class NeuralTangentKernel:
                 training_history.test_accuracy.append(test_acc_avg)
 
             if verbose:
-                s = f"Epoch {epoch:<4} | Train loss: {train_loss_avg:.4f} | Train accuracy: {train_acc_avg:.4f}"
+                s = f"Epoch {epoch:<4} | Train loss: {train_loss_avg:.4f} |" \
+                    f" Train accuracy: {train_acc_avg:.4f}"
                 if test_iter is not None:
-                    s += f" | Test loss: {test_loss_avg:.4f} | Test accuracy: {test_acc_avg:.4f}"
+                    s += f" | Test loss: {test_loss_avg:.4f} |" \
+                        f" Test accuracy: {test_acc_avg:.4f}"
                 print(s)
         
         if return_metrics: return training_history
@@ -173,10 +194,7 @@ class NeuralTangentKernel:
     
     @partial(jax.jit, static_argnums=(0, 6))
     def predict(self, K_train, x_test, x_train, y_train, params, apply_fn):
-        """Predicts the out of the Neural Tangent Kernel. 
-        
-        NTK-KARE(x) = n^{-1} K(x,X)(n^{-1} K(X,X) + \lambda I_n)^{-1} y
-        """
+        """Predicts the out of the Neural Tangent Kernel."""
         n = K_train.shape[0]
         K_mixed = self._compute_ntk(x_test, x_train, params, apply_fn)
         inv = jnp.linalg.inv((1 / n) * K_train + self.cfg.lambd * jnp.eye(n))

@@ -2,7 +2,6 @@
 
 import jax
 from jax import numpy as jnp
-import numpy as np
 
 
 def kare(y, K, z):
