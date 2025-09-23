@@ -106,13 +106,6 @@ class NeuralTangentKernel:
         params = self.init_params if start_from_init else self.params
         params = jax.tree_map(jnp.asarray, params)
 
-        # This computes the KARE objective for a given set of inputs and
-        # outputs.
-        # @jax.jit
-        # def _kare_objective(x_train, y_train, params, K, z):
-        #     self.K = self._compute_ntk(x_train, x_train, params)
-        #     return kare(y_train, self.K, self.cfg.z)
-
         # @jax.jit
         def _kare_objective(x_train, y_train, params, z):
             K = self._compute_ntk(x_train, x_train, params, self.apply_fn)
