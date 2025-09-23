@@ -41,7 +41,7 @@ class NeuralTangentKernel:
         apply_fn = None,
         config: NTKConfig = NTKConfig()
     ) -> None:
-        """Create an NTK instance.
+        """Create an Neural Tangent Kernel instance given a set of parameters.
 
         Args:
             params: The parameters of the model.
