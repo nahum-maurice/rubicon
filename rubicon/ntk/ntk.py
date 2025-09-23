@@ -112,7 +112,7 @@ class NeuralTangentKernel:
         #     self.K = self._compute_ntk(x_train, x_train, params)
         #     return kare(y_train, self.K, self.cfg.z)
 
-        @jax.jit
+        # @jax.jit
         def _kare_objective(x_train, y_train, params, z):
             K = self._compute_ntk(x_train, x_train, params, self.apply_fn)
             return kare(y_train, K, z), K
