@@ -104,6 +104,7 @@ class NeuralTangentKernel:
         # of parameters or whatever happened to the point of this function
         # being called.
         params = self.init_params if start_from_init else self.params
+        params = jax.tree_map(jnp.asarray, params)
 
         # This computes the KARE objective for a given set of inputs and
         # outputs.
@@ -115,7 +116,7 @@ class NeuralTangentKernel:
         # @jax.jit
         def _kare_objective(x_train, y_train, params, z):
             K = self._compute_ntk(x_train, x_train, params, self.apply_fn)
-            return kare(y_train, K, z), K
+            return kare(y_train, K, z)
         
         grad_kare = grad(_kare_objective)
         optimizer = self.cfg.optimizer(self.cfg.learning_rate)
@@ -128,7 +129,10 @@ class NeuralTangentKernel:
             train_loss_sum, train_acc_sum, num_batches = 0.0, 0.0, 0
 
             for x_train, y_train in train_iter:
-                grads, self.K = grad_kare(x_train, y_train, params, self.cfg.z)
+                # This is computed as the current kernel matrix. it's redundant,
+                # but i don't yet have time to try to optimize it.
+                self.K = self._compute_ntk(x_train, x_train, params, self.apply_fn)
+                grads = grad_kare(x_train, y_train, params, self.cfg.z)
                 updates, opt_state = optimizer.update(grads, opt_state)
                 params = optax.apply_updates(params, updates)
 
