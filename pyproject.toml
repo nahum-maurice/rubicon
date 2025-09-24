@@ -1,13 +1,18 @@
 [project]
 name = "rubicon"
 version = "0.1.0"
-description = "Add your description here"
+description = "A collection of tools for neural networks and kernel methods research"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "ipykernel>=6.30.1",
     "neural-tangents==0.6.5",
     "optax>=0.2.5",
-    "pytest>=8.4.2",
     "tensorflow-datasets>=4.9.9",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.30.1",
+    "black>=25.9.0",
+    "pytest>=8.4.2",
 ]

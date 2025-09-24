@@ -1,8 +1,7 @@
 """Contains the implementations of NTK utilities."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Iterator
 
 import jax
 from jax import grad, numpy as jnp
@@ -10,6 +9,7 @@ import neural_tangents as nt
 import optax
 
 from rubicon.nns.convnet import ConvNet
+from rubicon.nns._base import Model, TrainingHistory, TrainingConfig
 from rubicon.utils.jax import jax_cpu_backend
 from rubicon.utils.kare import kare
 from rubicon.utils.losses import cross_entropy_generic as cross_entropy
@@ -23,17 +23,7 @@ class NTKConfig:
     lambd: float = 1e-6
 
 
-@dataclass
-class TrainingHistory:
-    """Records the training history of the NTK via KARE."""
-    epochs: list[int] = field(default_factory=list)
-    train_loss: list[float] = field(default_factory=list)
-    train_accuracy: list[float] = field(default_factory=list)
-    test_loss: list[float] = field(default_factory=list)
-    test_accuracy: list[float] = field(default_factory=list)
-
-
-class NeuralTangentKernel:
+class NeuralTangentKernel(Model):
     def __init__(
         self,
         params = None,
@@ -66,7 +56,10 @@ class NeuralTangentKernel:
     def init_params(self): return self._init_params
         
     @staticmethod
-    def from_convnet(nn: ConvNet, config: NTKConfig = NTKConfig()) -> 'NeuralTangentKernel':
+    def from_convnet(
+        nn: ConvNet,
+        config: NTKConfig = NTKConfig()
+    ) -> 'NeuralTangentKernel':
         """Create an NTK instance from a ConvNet instance.
         
         Args:
@@ -87,16 +80,13 @@ class NeuralTangentKernel:
 
     def train_with_kare(
         self,
-        data_factory: Callable[[], tuple[Iterator[tuple[jnp.ndarray, jnp.ndarray]], Iterator[tuple[jnp.ndarray, jnp.ndarray]]]],
-        num_epochs: int = 10,
-        start_from_init: bool = False,
-        return_metrics: bool = False,
-        verbose: bool = False
-    ) -> None:
+        config: TrainingConfig,
+        start_from_init: bool = False
+    ) -> TrainingHistory | None:
         """Train the NTK instance using kernel ridge regression.
         
         Args:
-            num_epochs: The number of epochs to train for.
+            config: The training configuration.
             start_from_init: Whether to start training from the initial params
         """
 
@@ -112,13 +102,13 @@ class NeuralTangentKernel:
             return kare(y_train, K, z)
 
         grad_kare = grad(_kare_objective)
-        optimizer = self.cfg.optimizer(self.cfg.learning_rate)
+        optimizer = config.optimizer(config.learning_rate)
         opt_state = optimizer.init(params)
 
         training_history = TrainingHistory()
         
-        for epoch in range(num_epochs):
-            train_iter, test_iter = data_factory()
+        for epoch in range(config.num_epochs):
+            train_iter, test_iter = config.data_factory()
             train_loss_sum, train_acc_sum, num_batches = 0.0, 0.0, 0
 
             for x_train, y_train in train_iter:
@@ -130,11 +120,11 @@ class NeuralTangentKernel:
                     params=params,
                     apply_fn=self.apply_fn
                 )
-                grads = grad_kare(x_train, y_train, params, self.cfg.z)
+                grads = grad_kare(x_train, y_train, params, config.z)
                 updates, opt_state = optimizer.update(grads, opt_state)
                 params = optax.apply_updates(params, updates)
 
-                if not (return_metrics or verbose):
+                if not (config.return_metrics or config.verbose):
                     continue
                 batch_preds = self.predict(
                     K_train=self.K,
@@ -151,7 +141,7 @@ class NeuralTangentKernel:
             train_loss_avg = train_loss_sum / num_batches or 0.0
             train_acc_avg = train_acc_sum / num_batches or 0.0
 
-            if not (return_metrics or verbose):
+            if not (config.return_metrics or config.verbose):
                 continue
             for x_test, y_test in test_iter:
                 batch_preds = self.predict(
@@ -168,29 +158,31 @@ class NeuralTangentKernel:
             test_loss_avg = test_loss_sum / num_batches or 0.0
             test_acc_avg = test_acc_sum / num_batches or 0.0
        
-            if return_metrics:
-                training_history.epochs.append(epoch)
-                training_history.train_loss.append(train_loss_avg)
-                training_history.train_accuracy.append(train_acc_avg)
-                training_history.test_loss.append(test_loss_avg)
-                training_history.test_accuracy.append(test_acc_avg)
+            if config.return_metrics:
+                training_history.add_training_metrics(
+                    epoch,
+                    train_loss_avg,
+                    train_acc_avg,
+                    test_loss_avg,
+                    test_acc_avg
+                )
 
-            if verbose:
-                s = f"Epoch {epoch:<4} | Train loss: {train_loss_avg:.4f} |" \
-                    f" Train accuracy: {train_acc_avg:.4f}"
-                if test_iter is not None:
-                    s += f" | Test loss: {test_loss_avg:.4f} |" \
-                        f" Test accuracy: {test_acc_avg:.4f}"
-                print(s)
+            if config.verbose:
+                print(self._stringify_result(
+                    epoch,
+                    train_loss_avg,
+                    train_acc_avg,
+                    test_loss_avg,
+                    test_acc_avg
+                ))
         
-        if return_metrics: return training_history
+        if config.return_metrics: return training_history
 
     @partial(jax.jit, static_argnums=(0, 4))
     @jax_cpu_backend
     def _compute_ntk(self, x1, x2, params, apply_fn):
         """Compute the NTK between two inputs."""
-        ntk_fn = nt.empirical_ntk_fn(apply_fn)
-        return ntk_fn(x1, x2, params)
+        return nt.empirical_ntk_fn(apply_fn)(x1, x2, params)
     
     @partial(jax.jit, static_argnums=(0, 6))
     def predict(self, K_train, x_test, x_train, y_train, params, apply_fn):
