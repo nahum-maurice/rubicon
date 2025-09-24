@@ -152,7 +152,7 @@ class ConvNet(Model):
         if not self.initialized: self.initialize()
 
         @partial(jax.jit, static_argnames=['apply_fn'])
-        def grad_loss(p, x, y, apply_fn, reg: float = 0.0):
+        def _grd_loss(p, x, y, apply_fn, reg: float = 0.0):
             return grad(cross_entropy(
                 params=p,
                 x=x,
@@ -161,6 +161,7 @@ class ConvNet(Model):
                 reg=reg
             ))
 
+        grad_loss = partial(_grd_loss, apply_fn=self.apply_fn, reg=config.reg)
         ce = partial(cross_entropy, apply_fn=self.apply_fn, reg=config.reg)
         optimizer = config.optimizer(learning_rate=config.learning_rate)
         opt_state = optimizer.init(self.params)
