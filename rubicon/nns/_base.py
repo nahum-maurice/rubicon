@@ -16,6 +16,7 @@ DataFactory = Callable[[], tuple[DataIterator, DataIterator]]
 @dataclass
 class TrainingConfig:
     """Configuration for training session."""
+
     num_epochs: int = 10
     batch_size: int = 128
     reg: float = 1e-6
@@ -31,6 +32,7 @@ class TrainingConfig:
 @dataclass
 class TrainingHistory:
     """Records the training history of a ConvNet."""
+
     epochs: list[int] = field(default_factory=list)
     train_loss: list[float] = field(default_factory=list)
     train_accuracy: list[float] = field(default_factory=list)
@@ -43,10 +45,10 @@ class TrainingHistory:
         train_loss: float,
         train_accuracy: float,
         test_loss: float,
-        test_accuracy: float
+        test_accuracy: float,
     ) -> None:
         """Add training metrics to the history.
-        
+
         Args:
             epoch: The current epoch.
             train_loss: The training loss.
@@ -83,27 +85,24 @@ class Model:
 
     def predict(self): ...
 
-    def _stringify_result(
-        self,
-        epoch: int,
-        train_l: float,
-        train_a: float,
-        test_l: float,
-        test_a: float
-    ) -> str:
+    def print_result(
+        self, epoch: int, train_l: float, train_a: float, test_l: float, test_a: float
+    ) -> None:
         """Stringify the result of a training step.
-        
+
         Args:
             epoch: The current epoch.
             train_l: The training loss.
             train_a: The training accuracy.
             test_l: The test loss.
             test_a: The test accuracy.
-        
+
         Returns:
             A string representation of the result.
         """
-        return f"Epoch {epoch:<4} | Train loss: {train_l:.4f} | " \
-               f"Train accuracy: {train_a:.4f} | " \
-               f"Test loss: {test_l:.4f} | " \
-               f"Test accuracy: {test_a:.4f}"
+        print(
+            f"Epoch {epoch:<4} | Train loss: {train_l:.4f} | "
+            f"Train accuracy: {train_a:.4f} | "
+            f"Test loss: {test_l:.4f} | "
+            f"Test accuracy: {test_a:.4f}"
+        )

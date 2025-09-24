@@ -11,12 +11,12 @@ from neural_tangents import stax
 import optax
 
 from rubicon.nns._base import Model, TrainingConfig, TrainingHistory
-from rubicon.utils.losses import cross_entropy
 
 
 @dataclass
 class ConvNetConfig:
     """Configurations for convolutional neural networks."""
+
     conv_filters: list[int] = None
     kernel_sizes: list[tuple[int, int]] = None
     dense_sizes: list[int] = None
@@ -30,15 +30,20 @@ class ConvNetConfig:
     optimizer: optax.GradientTransformationExtraArgs = optax.adam
 
     def __post_init__(self):
-        if self.conv_filters is None: self.conv_filters = [32, 64]
-        if self.kernel_sizes is None: self.kernel_sizes = [(3, 3), (3, 3)]
-        if self.dense_sizes is None: self.dense_sizes = [128, 10]
+        if self.conv_filters is None:
+            self.conv_filters = [32, 64]
+        if self.kernel_sizes is None:
+            self.kernel_sizes = [(3, 3), (3, 3)]
+        if self.dense_sizes is None:
+            self.dense_sizes = [128, 10]
         if self.pool_after is None:
             self.pool_after = [True] * len(self.conv_filters)
-        assert len(self.conv_filters) == len(self.kernel_sizes), \
-            "conv_filters and kernel_sizes must have the same length"
-        assert len(self.pool_after) == len(self.conv_filters), \
-            "pool_after and conv_filters must have the same length"
+        assert len(self.conv_filters) == len(
+            self.kernel_sizes
+        ), "conv_filters and kernel_sizes must have the same length"
+        assert len(self.pool_after) == len(
+            self.conv_filters
+        ), "pool_after and conv_filters must have the same length"
         self.num_conv_layers = len(self.conv_filters)
         self.num_dense_layers = len(self.dense_sizes)
 
@@ -54,22 +59,25 @@ class ConvNet(Model):
     @property
     def initialized(self) -> bool:
         """Return whether or not the model is initialized
-        
+
         Returns:
             bool: whether or not the model is initialized
         """
-        return self.init_fn is not None \
-            and self.apply_fn is not None \
-            and self.kernel_fn is not None \
+        return (
+            self.init_fn is not None
+            and self.apply_fn is not None
+            and self.kernel_fn is not None
             and self.params is not None
-        
-    def initialize(self) -> 'ConvNet':
+        )
+
+    def initialize(self) -> "ConvNet":
         """Initialize the model if not already initialized
-        
+
         Returns:
             ConvNet: the initialized model
         """
-        if self.initialized: return self
+        if self.initialized:
+            return self
 
         layers = []
         # We first add the conv layers.
@@ -78,7 +86,7 @@ class ConvNet(Model):
                 out_chan=self.cfg.conv_filters[i],
                 filter_shape=self.cfg.kernel_sizes[i],
                 strides=(1, 1),
-                padding='SAME',
+                padding="SAME",
             )
             layers.append(layer)
             layers.append(self.cfg.activation_fn())
@@ -101,17 +109,17 @@ class ConvNet(Model):
         _, self.params = self.init_fn(key, input_shape=self.cfg.input_shape)
         return self
 
-    @partial(jax.jit, static_argnames=['apply_fn'])
-    def cross_entropy(self,params, x, y, apply_fn, reg: float = 0.0) -> float:
+    @partial(jax.jit, static_argnames=["apply_fn"])
+    def cross_entropy(self, params, x, y, apply_fn, reg: float = 0.0) -> float:
         """Compute the cross-entropy loss of a model with L2 reg
-        
+
         Args:
             params: the model parameters
             x: the input data
             y: the true labels
             apply_fn: the model's forward pass function
             reg: the reg parameter
-        
+
         Returns:
             float: the cross-entropy loss
         """
@@ -119,28 +127,27 @@ class ConvNet(Model):
         ce_loss = -jnp.mean(jnp.sum(y * jax.nn.log_softmax(logits), axis=1))
         # flatten params tree and compute L2 norm squared
         l2_norm_sq = tree_util.tree_reduce(
-            lambda acc, leaf: acc + jnp.sum(leaf**2), params, 0.0)
+            lambda acc, leaf: acc + jnp.sum(leaf**2), params, 0.0
+        )
         reg_loss = 0.5 * reg * l2_norm_sq
         return ce_loss + reg_loss
-    
+
     jax.jit
+
     def accuracy(self, preds, true) -> float:
         """Compute the accuracy of predictions
-        
+
         Args:
             preds: the predicted labels
             true: the true labels
-        
+
         Returns:
             float: the accuracy
         """
         return jnp.mean(jnp.argmax(preds, axis=1) == jnp.argmax(true, axis=1))
-    
+
     def train(self, config: TrainingConfig) -> TrainingHistory | None:
         """Train the model using mini-batch gradient descent
-
-        Note: The model must be initialized before traiing. If not priorly
-        initialized, it will be initialized automatically before training.
 
         Args:
             config: The training configuration.
@@ -149,23 +156,20 @@ class ConvNet(Model):
             TrainingHistory containing epoch-wise metrics if return_metrics is
             true, otherwise None.
         """
-        if not self.initialized: self.initialize()
+        if not self.initialized:
+            self.initialize()
 
-        @partial(jax.jit, static_argnames=['apply_fn'])
+        @partial(jax.jit, static_argnames=["apply_fn"])
         def _grd_loss(p, x, y, apply_fn, reg: float = 0.0):
-            return grad(cross_entropy(
-                params=p,
-                x=x,
-                y=y,
-                apply_fn=apply_fn,
-                reg=reg
-            ))
+            return grad(
+                self.cross_entropy(params=p, x=x, y=y, apply_fn=apply_fn, reg=reg)
+            )
 
         grad_loss = partial(_grd_loss, apply_fn=self.apply_fn, reg=config.reg)
         ce = partial(cross_entropy, apply_fn=self.apply_fn, reg=config.reg)
         optimizer = config.optimizer(learning_rate=config.learning_rate)
         opt_state = optimizer.init(self.params)
-        
+
         training_history = TrainingHistory()
         for epoch in range(config.num_epochs):
             train_iter, test_iter = config.data_factory()
@@ -179,7 +183,7 @@ class ConvNet(Model):
                 if config.return_metrics or config.verbose:
                     batch_loss = ce(self.params, x_batch, y_batch)
                     batch_preds = self.apply_fn(self.params, x_batch)
-                    batch_accuracy = accuracy(batch_preds, y_batch)
+                    batch_accuracy = self.accuracy(batch_preds, y_batch)
                     train_loss_sum += batch_loss
                     train_acc_sum += batch_accuracy
                     num_batches += 1
@@ -187,13 +191,13 @@ class ConvNet(Model):
             train_loss_avg = train_loss_sum / num_batches or 0.0
             train_acc_avg = train_acc_sum / num_batches or 0.0
 
-            if (config.return_metrics or config.verbose):
+            if config.return_metrics or config.verbose:
                 test_loss_sum, test_acc_sum, test_batches = 0.0, 0.0, 0
 
                 for x_test, y_test in test_iter:
                     test_loss = ce(self.params, x_test, y_test)
                     test_preds = self.apply_fn(self.params, x_test)
-                    test_acc = accuracy(test_preds, y_test)
+                    test_acc = self.accuracy(test_preds, y_test)
                     test_loss_sum += test_loss
                     test_acc_sum += test_acc
                     test_batches += 1
@@ -203,19 +207,16 @@ class ConvNet(Model):
 
             if config.return_metrics:
                 training_history.add_training_metrics(
-                    epoch,
-                    train_loss_avg,
-                    train_acc_avg,
-                    test_loss_avg,
-                    test_acc_avg
+                    epoch, train_loss_avg, train_acc_avg, test_loss_avg, test_acc_avg
                 )
             if config.verbose:
-                print(self._stringify_result(
+                self.print_result(
                     epoch,
                     train_loss_avg,
                     train_acc_avg,
                     test_loss_avg,
-                    test_acc_avg
-                ))
-        
-        if config.return_metrics: return training_history
+                    test_acc_avg,
+                )
+
+        if config.return_metrics:
+            return training_history

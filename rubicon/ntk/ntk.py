@@ -16,20 +16,17 @@ from rubicon.utils.losses import cross_entropy_generic as cross_entropy
 
 
 @dataclass
-class NTKConfig:
+class NTKTrainingConfig(TrainingConfig):
     z: float = 1e-3
-    optimizer: optax.GradientTransformationExtraArgs = optax.adam
-    learning_rate: float = 1e-3
     lambd: float = 1e-6
 
 
 class NeuralTangentKernel(Model):
     def __init__(
         self,
-        params = None,
-        kernel_fn = None,
-        apply_fn = None,
-        config: NTKConfig = NTKConfig()
+        params=None,
+        kernel_fn=None,
+        apply_fn=None,
     ) -> None:
         """Create an Neural Tangent Kernel instance given a set of parameters.
 
@@ -45,7 +42,6 @@ class NeuralTangentKernel(Model):
         # until i figure out how it can ease the current implementation.
         self.kernel_fn = kernel_fn
         self.apply_fn = apply_fn
-        self.cfg = config
         # the kernel matrix is kept here because it's used in different
         # places in a single function, so it looks like a good idea to
         # not compute it multiple times, even though we could just get
@@ -53,38 +49,33 @@ class NeuralTangentKernel(Model):
         self.K = None
 
     @property
-    def init_params(self): return self._init_params
-        
+    def init_params(self):
+        return self._init_params
+
     @staticmethod
-    def from_convnet(
-        nn: ConvNet,
-        config: NTKConfig = NTKConfig()
-    ) -> 'NeuralTangentKernel':
+    def from_convnet(nn: ConvNet) -> "NeuralTangentKernel":
         """Create an NTK instance from a ConvNet instance.
-        
+
         Args:
             nn: The ConvNet instance.
-            config: Configurations of mostly the hyperparameters of the NTK.
-        
+
         Returns:
             An NTK instance.
         """
-        assert nn.initialized, \
-            "ConvNet must have been initialized before extracting the NTK."
+        assert (
+            nn.initialized
+        ), "ConvNet must have been initialized before extracting the NTK."
         return NeuralTangentKernel(
             params=nn.params,
             kernel_fn=nn.kernel_fn,
             apply_fn=nn.apply_fn,
-            config=config
         )
 
     def train_with_kare(
-        self,
-        config: TrainingConfig,
-        start_from_init: bool = False
+        self, config: NTKTrainingConfig, start_from_init: bool = False
     ) -> TrainingHistory | None:
         """Train the NTK instance using kernel ridge regression.
-        
+
         Args:
             config: The training configuration.
             start_from_init: Whether to start training from the initial params
@@ -106,7 +97,7 @@ class NeuralTangentKernel(Model):
         opt_state = optimizer.init(params)
 
         training_history = TrainingHistory()
-        
+
         for epoch in range(config.num_epochs):
             train_iter, test_iter = config.data_factory()
             train_loss_sum, train_acc_sum, num_batches = 0.0, 0.0, 0
@@ -115,10 +106,7 @@ class NeuralTangentKernel(Model):
                 # This is computed as the current kernel matrix. it's
                 # redundant, but i don't yet have time to try to optimize it.
                 self.K = self._compute_ntk(
-                    x1=x_train,
-                    x2=x_train,
-                    params=params,
-                    apply_fn=self.apply_fn
+                    x1=x_train, x2=x_train, params=params, apply_fn=self.apply_fn
                 )
                 grads = grad_kare(x_train, y_train, params, config.z)
                 updates, opt_state = optimizer.update(grads, opt_state)
@@ -132,12 +120,12 @@ class NeuralTangentKernel(Model):
                     x_train=x_train,
                     y_train=y_train,
                     params=params,
-                    apply_fn=self.apply_fn
+                    apply_fn=self.apply_fn,
                 )
                 train_loss_sum += cross_entropy(batch_preds, y_train)
                 train_acc_sum += accuracy(batch_preds, y_train)
                 num_batches += 1
-            
+
             train_loss_avg = train_loss_sum / num_batches or 0.0
             train_acc_avg = train_acc_sum / num_batches or 0.0
 
@@ -150,44 +138,43 @@ class NeuralTangentKernel(Model):
                     x_train=x_train,
                     y_train=y_train,
                     params=params,
-                    apply_fn=self.apply_fn
+                    apply_fn=self.apply_fn,
                 )
                 test_loss_sum += cross_entropy(batch_preds, y_test)
                 test_acc_sum += accuracy(batch_preds, y_test)
                 num_batches += 1
             test_loss_avg = test_loss_sum / num_batches or 0.0
             test_acc_avg = test_acc_sum / num_batches or 0.0
-       
+
             if config.return_metrics:
                 training_history.add_training_metrics(
-                    epoch,
-                    train_loss_avg,
-                    train_acc_avg,
-                    test_loss_avg,
-                    test_acc_avg
+                    epoch, train_loss_avg, train_acc_avg, test_loss_avg, test_acc_avg
                 )
 
             if config.verbose:
-                print(self._stringify_result(
+                self.print_result(
                     epoch,
                     train_loss_avg,
                     train_acc_avg,
                     test_loss_avg,
-                    test_acc_avg
-                ))
-        
-        if config.return_metrics: return training_history
+                    test_acc_avg,
+                )
+
+        if config.return_metrics:
+            return training_history
 
     @partial(jax.jit, static_argnums=(0, 4))
     @jax_cpu_backend
     def _compute_ntk(self, x1, x2, params, apply_fn):
         """Compute the NTK between two inputs."""
         return nt.empirical_ntk_fn(apply_fn)(x1, x2, params)
-    
+
     @partial(jax.jit, static_argnums=(0, 6))
-    def predict(self, K_train, x_test, x_train, y_train, params, apply_fn):
+    def predict(
+        self, K_train, x_test, x_train, y_train, params, apply_fn, lambd: float = 1e-6
+    ):
         """Predicts the out of the Neural Tangent Kernel."""
         n = K_train.shape[0]
         K_mixed = self._compute_ntk(x_test, x_train, params, apply_fn)
-        inv = jnp.linalg.inv((1 / n) * K_train + self.cfg.lambd * jnp.eye(n))
+        inv = jnp.linalg.inv((1 / n) * K_train + lambd * jnp.eye(n))
         return (1 / n) * K_mixed @ inv @ y_train

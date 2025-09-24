@@ -16,15 +16,15 @@ class MnistLoaderConfig:
 
 
 def preprocess(image, label, num_class: int = 10) -> tuple[jnp.array, jnp.array]:
-    """Preprocess the image and label. 
-    
+    """Preprocess the image and label.
+
     The image is normalized to [-1, 1] and the label is one-hot encoded.
 
     Args:
         image: The image to preprocess.
         label: The label to preprocess.
         num_class: The number of classes for the labels.
-    
+
     Returns:
         A tuple of the preprocessed image and label.
     """
@@ -33,24 +33,36 @@ def preprocess(image, label, num_class: int = 10) -> tuple[jnp.array, jnp.array]
     return image, label
 
 
-def load_mnist(config: MnistLoaderConfig = MnistLoaderConfig()) -> tuple[Iterator, Iterator]:
+def load_mnist(
+    config: MnistLoaderConfig = MnistLoaderConfig(),
+) -> tuple[Iterator, Iterator]:
     """Load the MNIST dataset.
-    
+
     Args:
         config: The configuration for the dataset loader.
-    
+
     Returns:
         A tuple of two iterators, one for the training set and one for the test set.
     """
     ds_train, ds_test = tfds.load(
         "mnist:3.*.*",
-        split=('train', 'test'),
+        split=("train", "test"),
         as_supervised=True,
     )
-    ds_train = ds_train.cache().shuffle(1000).batch(config.batch_size).prefetch(tf.data.AUTOTUNE)
-    ds_test = ds_test.cache().shuffle(1000).batch(config.batch_size).prefetch(tf.data.AUTOTUNE)
+    ds_train = (
+        ds_train.cache()
+        .shuffle(1000)
+        .batch(config.batch_size)
+        .prefetch(tf.data.AUTOTUNE)
+    )
+    ds_test = (
+        ds_test.cache()
+        .shuffle(1000)
+        .batch(config.batch_size)
+        .prefetch(tf.data.AUTOTUNE)
+    )
 
     train = map(lambda item: preprocess(*item), ds_train.as_numpy_iterator())
     test = map(lambda item: preprocess(*item), ds_test.as_numpy_iterator())
-    
+
     return train, test
