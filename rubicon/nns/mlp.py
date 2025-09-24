@@ -3,7 +3,13 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from rubicon.nns._base import Model, Prediction, TrainingConfig, TrainingHistory
+from rubicon.nns._base import (
+    DataArray,
+    Model,
+    Prediction,
+    TrainingConfig,
+    TrainingHistory,
+)
 
 
 @dataclass
@@ -25,16 +31,14 @@ class MLPConfig:
     seed: int = 42
 
 
-class MLP(Model):
+class MultiLayerPerceptron(Model):
     def __init__(self, cfg: MLPConfig) -> None: ...
 
     @property
     def initialized(self) -> bool: ...
 
-    def initialize(self) -> "MLP": ...
+    def __call__(self, *args, **kwargs) -> None: ...
 
-    def __call__(self) -> "MLP": ...
+    def fit(self, config: TrainingConfig) -> TrainingHistory | None: ...
 
-    def train(self, config: TrainingConfig) -> TrainingHistory | None: ...
-
-    def predict(self) -> Prediction: ...
+    def predict(self, x: DataArray) -> Prediction: ...

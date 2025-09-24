@@ -71,24 +71,26 @@ class Prediction:
 class Model:
     """A base class for neural network models."""
 
-    def __str__(self): ...
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} initialized={self.initialized}>"
 
-    def __repr__(self): ...
+    def __call__(self, *args, **kwargs) -> None:
+        raise NotImplementedError
 
     @property
-    def info(self): ...
+    def initialized(self):
+        raise NotImplementedError
 
-    @property
-    def initialized(self): ...
+    def fit(self, config: TrainingConfig) -> TrainingHistory | None:
+        raise NotImplementedError
 
-    def fit(self): ...
-
-    def predict(self): ...
+    def predict(self, x: DataArray) -> Prediction:
+        raise NotImplementedError
 
     def print_result(
         self, epoch: int, train_l: float, train_a: float, test_l: float, test_a: float
     ) -> None:
-        """Stringify the result of a training step.
+        """Outputs the result of a training step.
 
         Args:
             epoch: The current epoch.
@@ -96,9 +98,6 @@ class Model:
             train_a: The training accuracy.
             test_l: The test loss.
             test_a: The test accuracy.
-
-        Returns:
-            A string representation of the result.
         """
         print(
             f"Epoch {epoch:<4} | Train loss: {train_l:.4f} | "

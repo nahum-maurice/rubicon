@@ -10,7 +10,7 @@ import jax.numpy as jnp
 from neural_tangents import stax
 import optax
 
-from rubicon.nns._base import Model, TrainingConfig, TrainingHistory
+from rubicon.nns._base import DataArray, Model, TrainingConfig, TrainingHistory
 
 
 @dataclass
@@ -70,14 +70,14 @@ class ConvNet(Model):
             and self.params is not None
         )
 
-    def initialize(self) -> "ConvNet":
+    def __call__(self, *args, **kwargs) -> None:
         """Initialize the model if not already initialized
 
         Returns:
             ConvNet: the initialized model
         """
         if self.initialized:
-            return self
+            return
 
         layers = []
         # We first add the conv layers.
@@ -107,7 +107,6 @@ class ConvNet(Model):
         self.init_fn, self.apply_fn, self.kernel_fn = stax.serial(*layers)
         key = random.key(self.cfg.seed)
         _, self.params = self.init_fn(key, input_shape=self.cfg.input_shape)
-        return self
 
     @partial(jax.jit, static_argnames=["apply_fn"])
     def cross_entropy(self, params, x, y, apply_fn, reg: float = 0.0) -> float:
@@ -132,8 +131,7 @@ class ConvNet(Model):
         reg_loss = 0.5 * reg * l2_norm_sq
         return ce_loss + reg_loss
 
-    jax.jit
-
+    @jax.jit
     def accuracy(self, preds, true) -> float:
         """Compute the accuracy of predictions
 
@@ -146,7 +144,7 @@ class ConvNet(Model):
         """
         return jnp.mean(jnp.argmax(preds, axis=1) == jnp.argmax(true, axis=1))
 
-    def train(self, config: TrainingConfig) -> TrainingHistory | None:
+    def fit(self, config: TrainingConfig) -> TrainingHistory | None:
         """Train the model using mini-batch gradient descent
 
         Args:
@@ -220,3 +218,5 @@ class ConvNet(Model):
 
         if config.return_metrics:
             return training_history
+
+    def predict(self, x: DataArray) -> Prediction: ...
