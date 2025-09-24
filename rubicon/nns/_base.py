@@ -66,6 +66,7 @@ class TrainingHistory:
 @dataclass
 class Prediction:
     """The prediction result of a model."""
+    y: DataArray
 
 
 class Model:
