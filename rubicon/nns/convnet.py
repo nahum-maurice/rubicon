@@ -53,56 +53,53 @@ class ConvNetConfig:
         self.num_dense_layers = len(self.dense_sizes)
 
 
+class ConvolutionalNeuralNetwork(Model):
+    def __init__(self, cfg: ConvNetConfig) -> None:
+
+        # TODO(nahum): MaxPool is not supported by `neural_tangents` and this
+        # is bad. In the future, I plan to replace everything stax by the
+        # corresponding functions from `jax.example_libraries.stax`.
+        
+        layers = []
+    
+    def fit(self, config: TrainingConfig) -> TrainingHistory | None:
+        if not self.initialized:
+            raise ValueError("Model must be initialized before training.")
+
+    def predict(self, x: DataArray) -> Prediction:
+        if not self.initialized:
+            raise ValueError("Model must be initialized before prediction.")
+
+
 class ConvNet(Model):
     def __init__(self, cfg: ConvNetConfig) -> None:
-        self.cfg = cfg
-        self.init_fn = None
-        self.apply_fn = None
-        self.kernel_fn = None
-        self.params = None
-
-    @property
-    def initialized(self) -> bool:
-        return (
-            self.init_fn is not None
-            and self.apply_fn is not None
-            and self.kernel_fn is not None
-            and self.params is not None
-        )
-
-    def __call__(self, *args, **kwargs) -> None:
-        """Initialize the model if not already initialized"""
-        if self.initialized:
-            return
-
         layers = []
         # We first add the conv layers.
-        for i in range(self.cfg.num_conv_layers):
+        for i in range(cfg.num_conv_layers):
             layer = stax.Conv(
-                out_chan=self.cfg.conv_filters[i],
-                filter_shape=self.cfg.kernel_sizes[i],
+                out_chan=cfg.conv_filters[i],
+                filter_shape=cfg.kernel_sizes[i],
                 strides=(1, 1),
                 padding="SAME",
             )
             layers.append(layer)
-            layers.append(self.cfg.activation_fn())
+            layers.append(cfg.activation_fn())
             # We only add pooling if specified. Otherwise, we skip it
             # after a particular conv layer.
-            if self.cfg.pool_after[i] and self.cfg.pool_size:
-                layers.append(stax.AvgPool(self.cfg.pool_size))
+            if cfg.pool_after[i] and cfg.pool_size:
+                layers.append(stax.AvgPool(cfg.pool_size))
         layers.append(stax.Flatten())
         # We then add the dense layers.
-        for i in range(self.cfg.num_dense_layers):
+        for i in range(cfg.num_dense_layers):
             layer = stax.Dense(
-                self.cfg.dense_sizes[i],
+                cfg.dense_sizes[i],
             )
             layers.append(layer)
-            if i < self.cfg.num_dense_layers - 1:
-                layers.append(self.cfg.activation_fn())
+            if i < cfg.num_dense_layers - 1:
+                layers.append(cfg.activation_fn())
 
-        self.init_fn, self.apply_fn, self.kernel_fn = stax.serial(*layers)
-        key = jax.random.key(self.cfg.seed)
-        _, self.params = self.init_fn(key, input_shape=self.cfg.input_shape)
+        init, apply, kernel = stax.serial(*layers)
+        super().__init__(init, apply, kernel, None)
 
     @partial(jax.jit, static_argnames=["apply_fn"])
     def cross_entropy(self, params, x, y, apply_fn, reg: float = 0.0) -> float:
@@ -127,18 +124,6 @@ class ConvNet(Model):
         reg_loss = 0.5 * reg * l2_norm_sq
         return ce_loss + reg_loss
 
-    @jax.jit
-    def accuracy(self, preds, true) -> float:
-        """Compute the accuracy of predictions
-
-        Args:
-          preds: the predicted labels
-          true: the true labels
-
-        Returns:
-          float: the accuracy
-        """
-        return jnp.mean(jnp.argmax(preds, axis=1) == jnp.argmax(true, axis=1))
 
     def fit(self, config: TrainingConfig) -> TrainingHistory | None:
         if not self.initialized:
