@@ -58,11 +58,6 @@ class ConvNet(Model):
 
     @property
     def initialized(self) -> bool:
-        """Return whether or not the model is initialized
-
-        Returns:
-            bool: whether or not the model is initialized
-        """
         return (
             self.init_fn is not None
             and self.apply_fn is not None
@@ -141,15 +136,6 @@ class ConvNet(Model):
         return jnp.mean(jnp.argmax(preds, axis=1) == jnp.argmax(true, axis=1))
 
     def fit(self, config: TrainingConfig) -> TrainingHistory | None:
-        """Train the model using mini-batch gradient descent
-
-        Args:
-            config: The training configuration.
-
-        Returns:
-            TrainingHistory containing epoch-wise metrics if return_metrics is
-            true, otherwise None.
-        """
         if not self.initialized:
             self.initialize()
 

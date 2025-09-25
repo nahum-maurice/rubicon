@@ -1,10 +1,11 @@
 """Blueprint for a generic parametrizable model."""
 
 from dataclasses import dataclass, field
-from typing import Callable, Iterator
+from typing import Any, Callable, Iterator
 
 import jax
 from jax import numpy as jnp
+from neural_tangents._src.utils.typing import InitFn, ApplyFn, KernelFn
 import numpy as np
 import optax
 
@@ -12,6 +13,15 @@ import optax
 DataArray = jnp.ndarray | np.ndarray
 DataIterator = Iterator[tuple[DataArray, DataArray]]
 DataFactory = Callable[[], tuple[DataIterator, DataIterator]]
+
+PyTree = Any
+"""A PyTree, see `JAX docs` for more information.
+
+.. _JAX docs: https://jax.readthedocs.io/en/latest/pytrees.html
+"""
+
+Params = PyTree
+"""The model parameters."""
 
 
 @dataclass
@@ -74,17 +84,67 @@ class Prediction:
 class Model:
     """A base class for neural network models."""
 
+    def __init__(
+        self,
+        init_fn: InitFn | None,
+        apply_fn: ApplyFn | None,
+        kernel_fn: KernelFn | None,
+        params: Params | None,
+    ) -> None:
+        """Create and initialize a model.
+
+        Since this is based so far on `neural_tangents`, the elements
+        `init_fn`, `apply_fn` and `kernel_fn` are expected to be functions
+        from `neural_tangents.stax`. The are given by calling:
+        `neural_tangents.stax.serial`. The `params` is in it turn given
+        by calling `init_fn` with a random key and the input shape.
+
+        Args:
+            init_fn: The initialization function.
+            apply_fn: The application function.
+            kernel_fn: The kernel function.
+            params: The parameters.
+        """
+        self.init_fn = init_fn
+        self.apply_fn = apply_fn
+        self.kernel_fn = kernel_fn
+        self.params = params
+
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} initialized={self.initialized}>"
 
     def __call__(self, *args, **kwargs) -> None:
+        """Initialize the model if not already initialized.
+
+        The purpose of this initialization (that in principle could be done in
+        the constructor) is to allow the user to change the `input_size` of
+        the model.
+
+        Args:
+            input_shape: The shape of the input data.
+            seed: The random seed.
+        """
         raise NotImplementedError
 
     @property
     def initialized(self):
+        """Return whether or not the model is initialized.
+
+        Returns:
+            bool: whether or not the model is initialized
+        """
         raise NotImplementedError
 
     def fit(self, config: TrainingConfig) -> TrainingHistory | None:
+        """Train the model using mini-batch gradient descent
+
+        Args:
+            config: The training configuration.
+
+        Returns:
+            TrainingHistory containing epoch-wise metrics if return_metrics is
+            true, otherwise None.
+        """
         raise NotImplementedError
 
     def predict(self, x: DataArray) -> Prediction:
