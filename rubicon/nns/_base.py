@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Callable, Iterator
 
+import jax
 from jax import numpy as jnp
 import numpy as np
 import optax
@@ -66,6 +67,7 @@ class TrainingHistory:
 @dataclass
 class Prediction:
     """The prediction result of a model."""
+
     y: DataArray
 
 
@@ -106,3 +108,16 @@ class Model:
             f"Test loss: {test_l:.4f} | "
             f"Test accuracy: {test_a:.4f}"
         )
+    
+    @jax.jit
+    def accuracy(self, preds, true) -> float:
+        """Computes the accuracy of the model.
+
+        Args:
+            preds: The predicted labels.
+            true: The true labels.
+
+        Returns:
+            float: The accuracy.
+        """
+        return jnp.mean(jnp.argmax(preds, axis=1) == jnp.argmax(true, axis=1))

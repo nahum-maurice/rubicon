@@ -71,11 +71,7 @@ class ConvNet(Model):
         )
 
     def __call__(self, *args, **kwargs) -> None:
-        """Initialize the model if not already initialized
-
-        Returns:
-            ConvNet: the initialized model
-        """
+        """Initialize the model if not already initialized"""
         if self.initialized:
             return
 
