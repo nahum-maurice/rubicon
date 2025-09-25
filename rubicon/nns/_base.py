@@ -21,7 +21,6 @@ PyTree = Any
 """
 
 Params = PyTree
-"""The model parameters."""
 
 
 @dataclass
@@ -61,11 +60,11 @@ class TrainingHistory:
         """Add training metrics to the history.
 
         Args:
-            epoch: The current epoch.
-            train_loss: The training loss.
-            train_accuracy: The training accuracy.
-            test_loss: The test loss.
-            test_accuracy: The test accuracy.
+          epoch: The current epoch.
+          train_loss: The training loss.
+          train_accuracy: The training accuracy.
+          test_loss: The test loss.
+          test_accuracy: The test accuracy.
         """
         self.epochs.append(epoch)
         self.train_loss.append(train_loss)
