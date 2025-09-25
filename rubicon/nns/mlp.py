@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from neural_tangents import stax
+
 from rubicon.nns._base import (
     DataArray,
     Model,
