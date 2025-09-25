@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator
 
 import jax
-from jax import numpy as jnp
+from jax import numpy as jnp, random
 from neural_tangents._src.utils.typing import InitFn, ApplyFn, KernelFn
 import numpy as np
 import optax
@@ -113,7 +113,7 @@ class Model:
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} initialized={self.initialized}>"
 
-    def __call__(self, *args, **kwargs) -> None:
+    def __call__(self, input_shape: tuple[int, ...], seed: int = 42) -> None:
         """Initialize the model if not already initialized.
 
         The purpose of this initialization (that in principle could be done in
@@ -124,7 +124,8 @@ class Model:
             input_shape: The shape of the input data.
             seed: The random seed.
         """
-        raise NotImplementedError
+        key = random.key(seed)
+        _, self.params = self.init_fn(key, input_shape=input_shape)
 
     @property
     def initialized(self):

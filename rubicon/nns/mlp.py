@@ -60,10 +60,6 @@ class MultiLayerPerceptron(Model):
         attrs = [self.init_fn, self.apply_fn, self.kernel_fn, self.params]
         return all([attr is not None for attr in attrs])
 
-    def __call__(self, input_shape: tuple[int, ...], seed: int = 42) -> None:
-        key = random.key(seed)
-        _, self.params = self.init_fn(key, input_shape=input_shape)
-
     def fit(self, config: TrainingConfig) -> TrainingHistory | None:
         if not self.initialized:
             raise ValueError("Model must be initialized before training.")
