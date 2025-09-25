@@ -134,7 +134,9 @@ class Model:
         Returns:
             bool: whether or not the model is initialized
         """
-        raise NotImplementedError
+        attrs = [self.init_fn, self.apply_fn, self.kernel_fn, self.params]
+        return all([attr is not None for attr in attrs])
+
 
     def fit(self, config: TrainingConfig) -> TrainingHistory | None:
         """Train the model using mini-batch gradient descent

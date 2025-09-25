@@ -34,12 +34,6 @@ class MLPConfig:
 
 class MultiLayerPerceptron(Model):
     def __init__(self, cfg: MLPConfig) -> None:
-        """
-        Initialize the model.
-
-        Args:
-            cfg: The configuration for the MLP.
-        """
 
         # TODO add dropout and batch norm. This cannot be done right now (at
         # least in the case of batch norm) because `neural_tangents` does not
@@ -56,11 +50,6 @@ class MultiLayerPerceptron(Model):
 
         init, apply, kernel = stax.serial(*layers)
         super().__init__(init, apply, kernel, None)
-
-    @property
-    def initialized(self) -> bool:
-        attrs = [self.init_fn, self.apply_fn, self.kernel_fn, self.params]
-        return all([attr is not None for attr in attrs])
 
     def fit(self, config: TrainingConfig) -> TrainingHistory | None:
         if not self.initialized:

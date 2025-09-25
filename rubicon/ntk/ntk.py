@@ -1,6 +1,7 @@
 """Contains the implementations of NTK utilities."""
 
 from dataclasses import dataclass
+import enum
 from functools import partial
 
 import jax
@@ -13,6 +14,17 @@ from rubicon.nns._base import Model, TrainingHistory, TrainingConfig
 from rubicon.utils.jax import jax_cpu_backend
 from rubicon.utils.kare import kare
 from rubicon.utils.losses import cross_entropy_generic as cross_entropy
+
+
+class SupportedArchitectures(enum.Enum, str):
+    """The different neural network architectures supported by this module.
+    
+    Attributes:
+      MLP: Multi-layer perceptron.
+      CONVNET: Convolutional neural network.
+    """
+    MLP = "mlp"
+    CONVNET = "convnet"
 
 
 @dataclass
