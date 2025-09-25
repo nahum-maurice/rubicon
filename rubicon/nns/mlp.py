@@ -51,7 +51,7 @@ class MultiLayerPerceptron(Model):
         layers = []
         for layer in cfg.hidden_layers:
             layers.append(stax.Dense(layer.size))
-            layers.append(layer.activation_fn)
+            layers.append(layer.activation_fn())
         layers.append(stax.Dense(cfg.output_layer.size))
 
         init, apply, kernel = stax.serial(*layers)
