@@ -5,12 +5,17 @@ from functools import partial
 from typing import Any
 
 import jax
-from jax import grad, random
 import jax.numpy as jnp
 from neural_tangents import stax
 import optax
 
-from rubicon.nns._base import DataArray, Model, TrainingConfig, TrainingHistory
+from rubicon.nns._base import (
+    DataArray,
+    Model,
+    Prediction,
+    TrainingConfig,
+    TrainingHistory,
+)
 
 
 @dataclass
@@ -96,7 +101,7 @@ class ConvNet(Model):
                 layers.append(self.cfg.activation_fn())
 
         self.init_fn, self.apply_fn, self.kernel_fn = stax.serial(*layers)
-        key = random.key(self.cfg.seed)
+        key = jax.random.key(self.cfg.seed)
         _, self.params = self.init_fn(key, input_shape=self.cfg.input_shape)
 
     @partial(jax.jit, static_argnames=["apply_fn"])
@@ -104,14 +109,14 @@ class ConvNet(Model):
         """Compute the cross-entropy loss of a model with L2 reg
 
         Args:
-            params: the model parameters
-            x: the input data
-            y: the true labels
-            apply_fn: the model's forward pass function
-            reg: the reg parameter
+          params: the model parameters
+          x: the input data
+          y: the true labels
+          apply_fn: the model's forward pass function
+          reg: the reg parameter
 
         Returns:
-            float: the cross-entropy loss
+          float: the cross-entropy loss
         """
         logits = apply_fn(params, x)
         ce_loss = -jnp.mean(jnp.sum(y * jax.nn.log_softmax(logits), axis=1))
@@ -127,11 +132,11 @@ class ConvNet(Model):
         """Compute the accuracy of predictions
 
         Args:
-            preds: the predicted labels
-            true: the true labels
+          preds: the predicted labels
+          true: the true labels
 
         Returns:
-            float: the accuracy
+          float: the accuracy
         """
         return jnp.mean(jnp.argmax(preds, axis=1) == jnp.argmax(true, axis=1))
 
@@ -141,7 +146,7 @@ class ConvNet(Model):
 
         @partial(jax.jit, static_argnames=["apply_fn"])
         def _grd_loss(p, x, y, apply_fn, reg: float = 0.0):
-            return grad(
+            return jax.grad(
                 self.cross_entropy(params=p, x=x, y=y, apply_fn=apply_fn, reg=reg)
             )
 

@@ -100,10 +100,10 @@ class Model:
         by calling `init_fn` with a random key and the input shape.
 
         Args:
-            init_fn: The initialization function.
-            apply_fn: The application function.
-            kernel_fn: The kernel function.
-            params: The parameters.
+          init_fn: The initialization function.
+          apply_fn: The application function.
+          kernel_fn: The kernel function.
+          params: The parameters.
         """
         self.init_fn = init_fn
         self.apply_fn = apply_fn
@@ -121,8 +121,8 @@ class Model:
         the model.
 
         Args:
-            input_shape: The shape of the input data.
-            seed: The random seed.
+          input_shape: The shape of the input data.
+          seed: The random seed.
         """
         key = random.key(seed)
         _, self.params = self.init_fn(key, input_shape=input_shape)
@@ -132,21 +132,20 @@ class Model:
         """Return whether or not the model is initialized.
 
         Returns:
-            bool: whether or not the model is initialized
+          bool: whether or not the model is initialized
         """
         attrs = [self.init_fn, self.apply_fn, self.kernel_fn, self.params]
         return all([attr is not None for attr in attrs])
-
 
     def fit(self, config: TrainingConfig) -> TrainingHistory | None:
         """Train the model using mini-batch gradient descent
 
         Args:
-            config: The training configuration.
+          config: The training configuration.
 
         Returns:
-            TrainingHistory containing epoch-wise metrics if return_metrics is
-            true, otherwise None.
+          TrainingHistory containing epoch-wise metrics if return_metrics is
+          true, otherwise None.
         """
         raise NotImplementedError
 
@@ -159,11 +158,11 @@ class Model:
         """Outputs the result of a training step.
 
         Args:
-            epoch: The current epoch.
-            train_l: The training loss.
-            train_a: The training accuracy.
-            test_l: The test loss.
-            test_a: The test accuracy.
+          epoch: The current epoch.
+          train_l: The training loss.
+          train_a: The training accuracy.
+          test_l: The test loss.
+          test_a: The test accuracy.
         """
         print(
             f"Epoch {epoch:<4} | Train loss: {train_l:.4f} | "
@@ -177,10 +176,10 @@ class Model:
         """Computes the accuracy of the model.
 
         Args:
-            preds: The predicted labels.
-            true: The true labels.
+          preds: The predicted labels.
+          true: The true labels.
 
         Returns:
-            float: The accuracy.
+          float: The accuracy.
         """
         return jnp.mean(jnp.argmax(preds, axis=1) == jnp.argmax(true, axis=1))

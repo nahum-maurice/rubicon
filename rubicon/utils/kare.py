@@ -8,12 +8,12 @@ def kare(y, K, z):
     """Computes the Kernel Alignment Risk Estimator (KARE)
 
     Args:
-        y: The target values.
-        K: The kernel matrix.
-        z: The regularization parameter.
+      y: The target values.
+      K: The kernel matrix.
+      z: The regularization parameter.
 
     Returns:
-        The KARE value.
+      The KARE value.
     """
     n = K.shape[0]
     K_norm = K / n

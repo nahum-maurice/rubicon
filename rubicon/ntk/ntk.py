@@ -18,11 +18,12 @@ from rubicon.utils.losses import cross_entropy_generic as cross_entropy
 
 class SupportedArchitectures(enum.Enum, str):
     """The different neural network architectures supported by this module.
-    
+
     Attributes:
       MLP: Multi-layer perceptron.
       CONVNET: Convolutional neural network.
     """
+
     MLP = "mlp"
     CONVNET = "convnet"
 
@@ -43,8 +44,8 @@ class NeuralTangentKernel(Model):
         """Create an Neural Tangent Kernel instance given a set of parameters.
 
         Args:
-            params: The parameters of the model.
-            kernel_fn: The kernel function of the model.
+          params: The parameters of the model.
+          kernel_fn: The kernel function of the model.
         """
         # the initial parameters. they are not supposed to be updated
         # contrary to the params
@@ -69,10 +70,10 @@ class NeuralTangentKernel(Model):
         """Create an NTK instance from a ConvNet instance.
 
         Args:
-            nn: The ConvNet instance.
+          nn: The ConvNet instance.
 
         Returns:
-            An NTK instance.
+          An NTK instance.
         """
         assert (
             nn.initialized
@@ -89,8 +90,8 @@ class NeuralTangentKernel(Model):
         """Train the NTK instance using kernel ridge regression.
 
         Args:
-            config: The training configuration.
-            start_from_init: Whether to start training from the initial params
+          config: The training configuration.
+          start_from_init: Whether to start training from the initial params
         """
 
         # This determines whether to consider starting with the initial set
