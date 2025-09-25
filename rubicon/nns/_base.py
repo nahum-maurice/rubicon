@@ -108,7 +108,7 @@ class Model:
             f"Test loss: {test_l:.4f} | "
             f"Test accuracy: {test_a:.4f}"
         )
-    
+
     @jax.jit
     def accuracy(self, preds, true) -> float:
         """Computes the accuracy of the model.
