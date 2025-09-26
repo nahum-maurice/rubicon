@@ -38,7 +38,7 @@ class MultiLayerPerceptron(Model):
 
         # TODO(nahum): add dropout and batch norm. This cannot be done right
         # now (at least in the case of batch norm) because `neural_tangents`
-        # does not have support for BatchNorm. In the future, I plan to 
+        # does not have support for BatchNorm. In the future, I plan to
         # replace the part of it that is used (basically nt.empirical_ntk_fn)
         # and in this sense, it would be possible to use full-fledge batch
         # norm from `jax.example_libraries.stax.BatchNorm`.

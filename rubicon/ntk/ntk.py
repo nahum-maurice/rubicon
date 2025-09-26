@@ -119,7 +119,10 @@ class NeuralTangentKernel(Model):
                 # This is computed as the current kernel matrix. it's
                 # redundant, but i don't yet have time to try to optimize it.
                 self.K = self._compute_ntk(
-                    x1=x_train, x2=x_train, params=params, apply_fn=self.apply_fn
+                    x1=x_train,
+                    x2=x_train,
+                    params=params,
+                    apply_fn=self.apply_fn,
                 )
                 grads = grad_kare(x_train, y_train, params, config.z)
                 updates, opt_state = optimizer.update(grads, opt_state)
@@ -161,7 +164,11 @@ class NeuralTangentKernel(Model):
 
             if config.return_metrics:
                 training_history.add_training_metrics(
-                    epoch, train_loss_avg, train_acc_avg, test_loss_avg, test_acc_avg
+                    epoch,
+                    train_loss_avg,
+                    train_acc_avg,
+                    test_loss_avg,
+                    test_acc_avg,
                 )
 
             if config.verbose:
@@ -184,7 +191,14 @@ class NeuralTangentKernel(Model):
 
     @partial(jax.jit, static_argnums=(0, 6))
     def predict(
-        self, K_train, x_test, x_train, y_train, params, apply_fn, lambd: float = 1e-6
+        self,
+        K_train,
+        x_test,
+        x_train,
+        y_train,
+        params,
+        apply_fn,
+        lambd: float = 1e-6,
     ):
         """Predicts the out of the Neural Tangent Kernel."""
         n = K_train.shape[0]

@@ -16,3 +16,6 @@ dev = [
     "black>=25.9.0",
     "pytest>=8.4.2",
 ]
+
+[tool.black]
+line-length = 79

@@ -15,7 +15,9 @@ class MnistLoaderConfig:
     num_class: int = 10
 
 
-def preprocess(image, label, num_class: int = 10) -> tuple[jnp.array, jnp.array]:
+def preprocess(
+    image, label, num_class: int = 10
+) -> tuple[jnp.array, jnp.array]:
     """Preprocess the image and label.
 
     The image is normalized to [-1, 1] and the label is one-hot encoded.

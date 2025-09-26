@@ -59,9 +59,9 @@ class ConvolutionalNeuralNetwork(Model):
         # TODO(nahum): MaxPool is not supported by `neural_tangents` and this
         # is bad. In the future, I plan to replace everything stax by the
         # corresponding functions from `jax.example_libraries.stax`.
-        
+
         layers = []
-    
+
     def fit(self, config: TrainingConfig) -> TrainingHistory | None:
         if not self.initialized:
             raise ValueError("Model must be initialized before training.")
@@ -91,10 +91,7 @@ class ConvNet(Model):
         layers.append(stax.Flatten())
         # We then add the dense layers.
         for i in range(cfg.num_dense_layers):
-            layer = stax.Dense(
-                cfg.dense_sizes[i],
-            )
-            layers.append(layer)
+            layers.append(stax.Dense(cfg.dense_sizes[i]))
             if i < cfg.num_dense_layers - 1:
                 layers.append(cfg.activation_fn())
 
@@ -124,7 +121,6 @@ class ConvNet(Model):
         reg_loss = 0.5 * reg * l2_norm_sq
         return ce_loss + reg_loss
 
-
     def fit(self, config: TrainingConfig) -> TrainingHistory | None:
         if not self.initialized:
             self.initialize()
@@ -132,7 +128,9 @@ class ConvNet(Model):
         @partial(jax.jit, static_argnames=["apply_fn"])
         def _grd_loss(p, x, y, apply_fn, reg: float = 0.0):
             return jax.grad(
-                self.cross_entropy(params=p, x=x, y=y, apply_fn=apply_fn, reg=reg)
+                self.cross_entropy(
+                    params=p, x=x, y=y, apply_fn=apply_fn, reg=reg
+                )
             )
 
         grad_loss = partial(_grd_loss, apply_fn=self.apply_fn, reg=config.reg)
@@ -177,7 +175,11 @@ class ConvNet(Model):
 
             if config.return_metrics:
                 training_history.add_training_metrics(
-                    epoch, train_loss_avg, train_acc_avg, test_loss_avg, test_acc_avg
+                    epoch,
+                    train_loss_avg,
+                    train_acc_avg,
+                    test_loss_avg,
+                    test_acc_avg,
                 )
             if config.verbose:
                 self.print_result(

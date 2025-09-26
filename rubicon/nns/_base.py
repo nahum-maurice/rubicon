@@ -152,7 +152,12 @@ class Model:
         raise NotImplementedError
 
     def print_result(
-        self, epoch: int, train_l: float, train_a: float, test_l: float, test_a: float
+        self,
+        epoch: int,
+        train_l: float,
+        train_a: float,
+        test_l: float,
+        test_a: float,
     ) -> None:
         """Outputs the result of a training step.
 
