@@ -1,14 +1,15 @@
 """Blueprint for a generic parametrizable model."""
 
 from dataclasses import dataclass, field
+from typing import Any
 
 import jax
 from jax import numpy as jnp, random
 from jax.flatten_util import ravel_pytree
-from neural_tangents._src.utils.typing import InitFn, ApplyFn, KernelFn
 import optax
 
 from rubicon.common.types import DataArray, DataFactory
+from rubicon.nns.losses import KARELoss, MSELoss, LossFn
 
 
 @dataclass
@@ -20,6 +21,7 @@ class TrainingConfig:
     reg: float = 1e-6
     learning_rate: float = 1e-3
     optimizer: optax.GradientTransformationExtraArgs = optax.adam
+    loss_fn: LossFn = MSELoss()
 
     return_metrics: bool = False
     verbose: bool = False
@@ -73,15 +75,14 @@ class Model:
 
     def __init__(
         self,
-        init_fn: InitFn | None,
-        apply_fn: ApplyFn | None,
-        kernel_fn: KernelFn | None,
+        init_fn: Any | None,  # TODO(nahum): fix the type
+        apply_fn: Any | None,  # TODO(nahum): fix the type
         params: Pytree | None,
     ) -> None:
         """Create and initialize a model.
 
         Since this is based so far on `neural_tangents`, the elements
-        `init_fn`, `apply_fn` and `kernel_fn` are expected to be functions
+        `init_fn` and `apply_fn` are expected to be functions
         from `neural_tangents.stax`. The are given by calling:
         `neural_tangents.stax.serial`. The `params` is in it turn given
         by calling `init_fn` with a random key and the input shape.
@@ -89,12 +90,10 @@ class Model:
         Args:
           init_fn: The initialization function.
           apply_fn: The application function.
-          kernel_fn: The kernel function.
           params: The parameters.
         """
         self.init_fn = init_fn
         self.apply_fn = apply_fn
-        self.kernel_fn = kernel_fn
         self.params = params
 
     def __repr__(self) -> str:
@@ -123,7 +122,7 @@ class Model:
         Returns:
           bool: whether or not the model is initialized
         """
-        attrs = [self.init_fn, self.apply_fn, self.kernel_fn, self.params]
+        attrs = [self.init_fn, self.apply_fn, self.params]
         return all([attr is not None for attr in attrs])
 
     def fit(self, config: TrainingConfig) -> TrainingHistory | None:
@@ -136,47 +135,26 @@ class Model:
           TrainingHistory containing epoch-wise metrics if return_metrics is
           true, otherwise None.
         """
-        raise NotImplementedError
+        if isinstance(config.loss_fn, KARELoss):
+            return self._train_w_kare(config)
+        return self.custom_fit(config)
+    
+    def _train_w_kare(self, config: TrainingConfig) -> TrainingHistory | None:
+        ...
+
+    def custom_fit(self, config: TrainingConfig) -> TrainingHistory | None:
+        ...
 
     def predict(self, x: DataArray) -> Prediction:
-        raise NotImplementedError
-
-    def print_result(
-        self,
-        epoch: int,
-        train_l: float,
-        train_a: float,
-        test_l: float,
-        test_a: float,
-    ) -> None:
-        """Outputs the result of a training step.
+        """Make predictions using the model.
 
         Args:
-          epoch: The current epoch.
-          train_l: The training loss.
-          train_a: The training accuracy.
-          test_l: The test loss.
-          test_a: The test accuracy.
-        """
-        print(
-            f"Epoch {epoch:<4} | Train loss: {train_l:.4f} | "
-            f"Train accuracy: {train_a:.4f} | "
-            f"Test loss: {test_l:.4f} | "
-            f"Test accuracy: {test_a:.4f}"
-        )
-
-    @jax.jit
-    def accuracy(self, preds: DataArray, true: DataArray) -> float:
-        """Computes the accuracy of the model.
-
-        Args:
-          preds: The predicted labels.
-          true: The true labels.
+          x: The input data.
 
         Returns:
-          float: The accuracy.
+          Prediction: The prediction object containing the predicted values.
         """
-        return jnp.mean(jnp.argmax(preds, axis=1) == jnp.argmax(true, axis=1))
+        return self.apply_fn(self.params, x)
 
     def compute_gradient(self, x: jnp.ndarray) -> jnp.ndarray:
         """Compute the gradient vector with respect to the parameters of the
@@ -216,4 +194,4 @@ class Model:
         return self.compute_gradient(x) @ self.compute_gradient(y).T
 
 
-__all__ = ["Model", "TrainingConfig", "TrainingHistory", "Prediction"]
+__all__ = ["Model", "Prediction", "TrainingConfig", "TrainingHistory"]
