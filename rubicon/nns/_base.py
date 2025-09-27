@@ -1,26 +1,14 @@
 """Blueprint for a generic parametrizable model."""
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterator
 
 import jax
 from jax import numpy as jnp, random
+from jax.flatten_util import ravel_pytree
 from neural_tangents._src.utils.typing import InitFn, ApplyFn, KernelFn
-import numpy as np
 import optax
 
-
-DataArray = jnp.ndarray | np.ndarray
-DataIterator = Iterator[tuple[DataArray, DataArray]]
-DataFactory = Callable[[], tuple[DataIterator, DataIterator]]
-
-PyTree = Any
-"""A PyTree, see `JAX docs` for more information.
-
-.. _JAX docs: https://jax.readthedocs.io/en/latest/pytrees.html
-"""
-
-Params = PyTree
+from rubicon.common.types import DataArray, DataFactory
 
 
 @dataclass
@@ -88,7 +76,7 @@ class Model:
         init_fn: InitFn | None,
         apply_fn: ApplyFn | None,
         kernel_fn: KernelFn | None,
-        params: Params | None,
+        params: Pytree | None,
     ) -> None:
         """Create and initialize a model.
 
@@ -123,6 +111,8 @@ class Model:
           input_shape: The shape of the input data.
           seed: The random seed.
         """
+        if self.initialized:
+            return
         key = random.key(seed)
         _, self.params = self.init_fn(key, input_shape=input_shape)
 
@@ -176,7 +166,7 @@ class Model:
         )
 
     @jax.jit
-    def accuracy(self, preds, true) -> float:
+    def accuracy(self, preds: DataArray, true: DataArray) -> float:
         """Computes the accuracy of the model.
 
         Args:
@@ -187,3 +177,43 @@ class Model:
           float: The accuracy.
         """
         return jnp.mean(jnp.argmax(preds, axis=1) == jnp.argmax(true, axis=1))
+
+    def compute_gradient(self, x: jnp.ndarray) -> jnp.ndarray:
+        """Compute the gradient vector with respect to the parameters of the
+        model at a given point.
+
+        Args:
+          x: The input point.
+
+        Returns:
+          jnp.ndarray: The gradient vector.
+        """
+        assert self.initialized, "The model is not yet initialized"
+
+        def single_output(p: Pytree, x_: jnp.ndarray):
+            return self.apply_fn(p, x_.reshape(1, -1)[0, 0])
+
+        grad_fn = jax.grad(single_output, argnums=0)
+
+        def flat_grad(p: Pytree, x: jnp.ndarray) -> jnp.ndarray:
+            g_tree = grad_fn(p, x)
+            flat_g, _ = ravel_pytree(g_tree)
+            return flat_g
+
+        per_sample_grads = jax.vmap(lambda x: flat_grad(self.params, x))
+        return per_sample_grads(x.squeeze())
+
+    def compute_ntk(self, x: jnp.ndarray, y: jnp.ndarray) -> jnp.ndarray:
+        """Compute the NTK between two points.
+
+        Args:
+          x: The first input point.
+          y: The second input point.
+
+        Returns:
+          jnp.ndarray: The NTK between the two points.
+        """
+        return self.compute_gradient(x) @ self.compute_gradient(y).T
+
+
+__all__ = ["Model", "TrainingConfig", "TrainingHistory", "Prediction"]

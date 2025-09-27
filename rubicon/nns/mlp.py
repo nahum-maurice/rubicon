@@ -6,8 +6,8 @@ from typing import Any
 from neural_tangents import stax
 from neural_tangents._src.utils.typing import LayerKernelFn
 
+from rubicon.common.types import DataArray
 from rubicon.nns._base import (
-    DataArray,
     Model,
     Prediction,
     TrainingConfig,
