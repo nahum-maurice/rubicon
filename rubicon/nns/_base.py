@@ -23,17 +23,24 @@ class TrainingConfig:
     optimizer: optax.GradientTransformationExtraArgs = optax.adam
     loss_fn: LossFn = MSELoss()
 
-    return_metrics: bool = False
     verbose: bool = False
 
     data_factory: DataFactory
+
+
+class NTKTrainingConfig(TrainingConfig):
+    """Additional configurations for training session using NTK."""
+
+    z: float = 1e-3
+    lambd: float = 1e-6
+    update_params: bool = False
 
 
 @dataclass
 class TrainingHistory:
     """Records the training history of a ConvNet."""
 
-    epochs: list[int] = field(default_factory=list)
+    steps: list[int] = field(default_factory=list)
     train_loss: list[float] = field(default_factory=list)
     train_accuracy: list[float] = field(default_factory=list)
     test_loss: list[float] = field(default_factory=list)
@@ -41,7 +48,7 @@ class TrainingHistory:
 
     def add_training_metrics(
         self,
-        epoch: int,
+        step: int,
         train_loss: float,
         train_accuracy: float,
         test_loss: float,
@@ -50,13 +57,13 @@ class TrainingHistory:
         """Add training metrics to the history.
 
         Args:
-          epoch: The current epoch.
+          step: The current step.
           train_loss: The training loss.
           train_accuracy: The training accuracy.
           test_loss: The test loss.
           test_accuracy: The test accuracy.
         """
-        self.epochs.append(epoch)
+        self.steps.append(step)
         self.train_loss.append(train_loss)
         self.train_accuracy.append(train_accuracy)
         self.test_loss.append(test_loss)
@@ -137,13 +144,52 @@ class Model:
         """
         if isinstance(config.loss_fn, KARELoss):
             return self._train_w_kare(config)
-        return self.custom_fit(config)
+        return self.custom_train(config)
     
     def _train_w_kare(self, config: TrainingConfig) -> TrainingHistory | None:
-        ...
+        """Train the model with KARE loss to obtain the NTK-KARE.
 
-    def custom_fit(self, config: TrainingConfig) -> TrainingHistory | None:
-        ...
+        Args:
+          config: The training configuration.
+
+        Returns:
+          TrainingHistory containing epoch-wise metrics if return_metrics is
+          true, otherwise None.
+        """
+        @jax.jit
+        def _kare_objective(x, y, z, params: Pytree):
+            K = self.compute_ntk(x, x, params)
+            return config.loss_fn(y, K, z)
+
+        grad_kare = jax.grad(_kare_objective)
+        optimizer = config.optimizer(config.learning_rate)
+        # NOTE: we are using `self.params` which means we are starting the
+        # optimization from the current parameters of the model. In the future
+        # we should allow to specify a checkpoint to load the parameters from
+        # and to make this optional.
+        params = self.params
+        opt_state = optimizer.init(params)
+
+        for epoch in range(config.num_epochs):
+            train_iter, test_iter = config.data_factory()
+
+            for x, y in train_iter:
+                grads = grad_kare(x, y, config.z, params)
+                updates, opt_state = optimizer.update(grads, opt_state)
+                params = optax.apply_updates(params, updates)
+
+                K_train = self.compute_ntk(x, x, params)
+                batch_preds = self.ntk_predict(
+                    K_train=K_train,
+                    x_train=x,
+                    x_test=x,
+                    y_train=y,
+                    params=params,
+                    lambd=config.lambd,
+                )
+
+    def custom_train(self, config: TrainingConfig) -> TrainingHistory | None:
+        raise NotImplementedError
 
     def predict(self, x: DataArray) -> Prediction:
         """Make predictions using the model.
@@ -156,12 +202,41 @@ class Model:
         """
         return self.apply_fn(self.params, x)
 
-    def compute_gradient(self, x: jnp.ndarray) -> jnp.ndarray:
+    def ntk_predict(
+        self,
+        K_train: jnp.ndarray,
+        x_train: jnp.ndarray,
+        x_test: jnp.ndarray,
+        y_train: jnp.ndarray,
+        params: Pytree,
+        lambd: float = 1e-6,
+    ) -> Prediction:
+        """Make prediction using the NTK kernel.
+
+        Args:
+          K_train: The trained Kernel K(X, X)
+          x_train: The training data
+          x_test: The test data
+          y_train: The training labels
+          params: The model parameters
+          lambd: The regularization parameter
+
+        Returns:
+          Prediction: The prediction object containing the predicted values.
+        """
+        n = K_train.shape[0]
+        K_mixed = self.compute_ntk(x_train, x_test)
+        inv = jnp.linalg.inv((1 / n) * K_train + lambd * jnp.eye(n))
+        return (1 / n) * K_mixed @ inv @ y_train
+
+    @jax.jit
+    def compute_gradient(self, x: jnp.ndarray, params: Pytree) -> jnp.ndarray:
         """Compute the gradient vector with respect to the parameters of the
         model at a given point.
 
         Args:
           x: The input point.
+          params: The model parameters.
 
         Returns:
           jnp.ndarray: The gradient vector.
@@ -178,20 +253,29 @@ class Model:
             flat_g, _ = ravel_pytree(g_tree)
             return flat_g
 
-        per_sample_grads = jax.vmap(lambda x: flat_grad(self.params, x))
+        per_sample_grads = jax.vmap(lambda x: flat_grad(params, x))
         return per_sample_grads(x.squeeze())
 
-    def compute_ntk(self, x: jnp.ndarray, y: jnp.ndarray) -> jnp.ndarray:
+    @jax.jit
+    def compute_ntk(
+        self,
+        x: jnp.ndarray,
+        y: jnp.ndarray,
+        params: Pytree
+    ) -> jnp.ndarray:
         """Compute the NTK between two points.
 
         Args:
           x: The first input point.
           y: The second input point.
+          params: The model parameters.
 
         Returns:
           jnp.ndarray: The NTK between the two points.
         """
-        return self.compute_gradient(x) @ self.compute_gradient(y).T
+        G1 = self.compute_gradient(x, params)
+        G2 = self.compute_gradient(y, params)
+        return G1 @ G2.T
 
 
 __all__ = ["Model", "Prediction", "TrainingConfig", "TrainingHistory"]
