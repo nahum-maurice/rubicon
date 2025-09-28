@@ -10,6 +10,7 @@ import optax
 
 from rubicon.common.types import DataArray, DataFactory
 from rubicon.nns.losses import KARELoss, MSELoss, LossFn
+from rubicon.nns.metrics import MetricFn, Accuracy
 
 
 @dataclass
@@ -22,8 +23,11 @@ class TrainingConfig:
     learning_rate: float = 1e-3
     optimizer: optax.GradientTransformationExtraArgs = optax.adam
     loss_fn: LossFn = MSELoss()
+    accuracy_fn: MetricFn = Accuracy()
 
     verbose: bool = False
+
+    with_kare: bool = False
 
     data_factory: DataFactory
 
@@ -139,13 +143,12 @@ class Model:
           config: The training configuration.
 
         Returns:
-          TrainingHistory containing epoch-wise metrics if return_metrics is
-          true, otherwise None.
+          TrainingHistory containing step-wise metrics
         """
-        if isinstance(config.loss_fn, KARELoss):
+        if config.with_karec:
             return self._train_w_kare(config)
         return self.custom_train(config)
-    
+
     def _train_w_kare(self, config: TrainingConfig) -> TrainingHistory | None:
         """Train the model with KARE loss to obtain the NTK-KARE.
 
@@ -153,15 +156,16 @@ class Model:
           config: The training configuration.
 
         Returns:
-          TrainingHistory containing epoch-wise metrics if return_metrics is
-          true, otherwise None.
+          TrainingHistory containing step-wise metrics
         """
-        @jax.jit
-        def _kare_objective(x, y, z, params: Pytree):
-            K = self.compute_ntk(x, x, params)
-            return config.loss_fn(y, K, z)
 
-        grad_kare = jax.grad(_kare_objective)
+        @jax.jit
+        def kare_loss(x, y, z, params: Pytree):
+            K = self.compute_ntk(x, x, params)
+            _loss_fn = KARELoss()
+            return _loss_fn(y, K, z)
+
+        grad_kare = jax.grad(kare_loss)
         optimizer = config.optimizer(config.learning_rate)
         # NOTE: we are using `self.params` which means we are starting the
         # optimization from the current parameters of the model. In the future
@@ -170,23 +174,44 @@ class Model:
         params = self.params
         opt_state = optimizer.init(params)
 
-        for epoch in range(config.num_epochs):
-            train_iter, test_iter = config.data_factory()
+        step, history = 0, TrainingHistory()
+        for _ in range(config.num_epochs):
+            train_iter, _ = config.data_factory()
 
             for x, y in train_iter:
                 grads = grad_kare(x, y, config.z, params)
                 updates, opt_state = optimizer.update(grads, opt_state)
                 params = optax.apply_updates(params, updates)
 
-                K_train = self.compute_ntk(x, x, params)
-                batch_preds = self.ntk_predict(
-                    K_train=K_train,
-                    x_train=x,
-                    x_test=x,
-                    y_train=y,
-                    params=params,
-                    lambd=config.lambd,
+                K = self.compute_ntk(x, x, params)
+
+                # compute train metrics on the current batch
+                train_loss = loss_fn(x, y, config.z, params)
+                train_pred = self.ntk_predict(K, x, x, y, config.lambd)
+                train_accuracy = config.accuracy_fn(train_pred.y, y)
+                # compute test metrics on the full test set
+                _, fresh_test_iter = config.data_factory()
+                test_loss_tot, test_accuracy_tot, num_examples = 0.0, 0.0, 0
+                for x_test, y_test in fresh_test_iter:
+                    tst_pred = self.ntk_predict(K, x, x_test, y, config.lambd)
+                    batch_loss = config.loss_fn(y_test, tst_pred.y)
+                    batch_accuracy = config.accuracy_fn(tst_pred.y, y_test)
+                    batch_size = y_test.shape[0]
+                    test_loss_tot += batch_loss * batch_size
+                    test_accuracy_tot += batch_accuracy * batch_size
+                    num_examples += batch_size
+                test_loss = test_loss_tot / num_examples or 0.0
+                test_accuracy = test_accuracy_tot / num_examples or 0.0
+
+                history.add_training_metrics(
+                    step,
+                    train_loss,
+                    train_accuracy,
+                    test_loss,
+                    test_accuracy,
                 )
+                step += 1
+        return history
 
     def custom_train(self, config: TrainingConfig) -> TrainingHistory | None:
         raise NotImplementedError
@@ -208,7 +233,6 @@ class Model:
         x_train: jnp.ndarray,
         x_test: jnp.ndarray,
         y_train: jnp.ndarray,
-        params: Pytree,
         lambd: float = 1e-6,
     ) -> Prediction:
         """Make prediction using the NTK kernel.
@@ -258,10 +282,7 @@ class Model:
 
     @jax.jit
     def compute_ntk(
-        self,
-        x: jnp.ndarray,
-        y: jnp.ndarray,
-        params: Pytree
+        self, x: jnp.ndarray, y: jnp.ndarray, params: Pytree
     ) -> jnp.ndarray:
         """Compute the NTK between two points.
 

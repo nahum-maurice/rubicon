@@ -1,3 +1,6 @@
 """Implementation of a base metric class."""
 
-class MetricFn: ...
+
+class MetricFn:
+    def __init__(self) -> None:
+        pass
