@@ -1,6 +1,9 @@
 """Implementation of the Cross Entropy loss."""
 
+from functools import partial
+
 import jax
+import jax.numpy as jnp
 
 from ._base import LossFn
 
@@ -9,7 +12,7 @@ class CrossEntropyLoss(LossFn):
     def __call__(self, y_true: jnp.ndarray, y_pred: jnp.ndarray) -> float:
         return self.cross_entropy(y_true, y_pred)
 
-    @jax.jit
+    @partial(jax.jit, static_argnums=(0,))
     def cross_entropy(self, y_true: jnp.ndarray, y_pred: jnp.ndarray) -> float:
         """Computes the cross-entropy loss.
 

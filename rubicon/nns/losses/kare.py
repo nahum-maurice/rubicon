@@ -1,5 +1,8 @@
 """Implementation of the KARE loss."""
 
+import jax
+import jax.numpy as jnp
+
 from ._base import LossFn
 
 

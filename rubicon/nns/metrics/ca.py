@@ -1,14 +1,20 @@
+"""Implementation of the accuracy metric."""
+
+from functools import partial
+
 import jax
+from jax import numpy as jnp
 
 from rubicon.common.types import DataArray
 from rubicon.nns.metrics._base import MetricFn
 
 
-class Accuracy(MetricFn):
+class ClassificationAccuracy(MetricFn):
     def __call__(self, preds: DataArray, true: DataArray) -> float:
         return self.accuracy(preds, true)
 
-    @jax.jit
+    
+    @partial(jax.jit, static_argnums=(0,))
     def accuracy(self, preds: DataArray, true: DataArray) -> float:
         """Computes the accuracy of the model.
 

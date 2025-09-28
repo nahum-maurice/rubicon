@@ -8,14 +8,16 @@ from jax import numpy as jnp, random
 from jax.flatten_util import ravel_pytree
 import optax
 
-from rubicon.common.types import DataArray, DataFactory
+from rubicon.common.types import DataArray, DataFactory, PyTree
 from rubicon.nns.losses import KARELoss, MSELoss, LossFn
-from rubicon.nns.metrics import MetricFn, Accuracy
+from rubicon.nns.metrics import MetricFn, MeanAbsoluteError
 
 
 @dataclass
 class TrainingConfig:
     """Configuration for training session."""
+
+    data_factory: DataFactory
 
     num_epochs: int = 10
     batch_size: int = 128
@@ -23,13 +25,12 @@ class TrainingConfig:
     learning_rate: float = 1e-3
     optimizer: optax.GradientTransformationExtraArgs = optax.adam
     loss_fn: LossFn = MSELoss()
-    accuracy_fn: MetricFn = Accuracy()
+    accuracy_fn: MetricFn = MeanAbsoluteError()
 
     verbose: bool = False
 
     with_kare: bool = False
 
-    data_factory: DataFactory
 
 
 class NTKTrainingConfig(TrainingConfig):
@@ -88,7 +89,7 @@ class Model:
         self,
         init_fn: Any | None,  # TODO(nahum): fix the type
         apply_fn: Any | None,  # TODO(nahum): fix the type
-        params: Pytree | None,
+        params: PyTree | None,
     ) -> None:
         """Create and initialize a model.
 
@@ -145,7 +146,7 @@ class Model:
         Returns:
           TrainingHistory containing step-wise metrics
         """
-        if config.with_karec:
+        if config.with_kare:
             return self._train_w_kare(config)
         return self.custom_train(config)
 
@@ -160,7 +161,7 @@ class Model:
         """
 
         @jax.jit
-        def kare_loss(x, y, z, params: Pytree):
+        def kare_loss(x, y, z, params: PyTree):
             K = self.compute_ntk(x, x, params)
             _loss_fn = KARELoss()
             return _loss_fn(y, K, z)
@@ -254,7 +255,7 @@ class Model:
         return (1 / n) * K_mixed @ inv @ y_train
 
     @jax.jit
-    def compute_gradient(self, x: jnp.ndarray, params: Pytree) -> jnp.ndarray:
+    def compute_gradient(self, x: jnp.ndarray, params: PyTree) -> jnp.ndarray:
         """Compute the gradient vector with respect to the parameters of the
         model at a given point.
 
@@ -267,12 +268,12 @@ class Model:
         """
         assert self.initialized, "The model is not yet initialized"
 
-        def single_output(p: Pytree, x_: jnp.ndarray):
+        def single_output(p: PyTree, x_: jnp.ndarray):
             return self.apply_fn(p, x_.reshape(1, -1)[0, 0])
 
         grad_fn = jax.grad(single_output, argnums=0)
 
-        def flat_grad(p: Pytree, x: jnp.ndarray) -> jnp.ndarray:
+        def flat_grad(p: PyTree, x: jnp.ndarray) -> jnp.ndarray:
             g_tree = grad_fn(p, x)
             flat_g, _ = ravel_pytree(g_tree)
             return flat_g
@@ -282,7 +283,7 @@ class Model:
 
     @jax.jit
     def compute_ntk(
-        self, x: jnp.ndarray, y: jnp.ndarray, params: Pytree
+        self, x: jnp.ndarray, y: jnp.ndarray, params: PyTree
     ) -> jnp.ndarray:
         """Compute the NTK between two points.
 

@@ -1,6 +1,7 @@
 """Metrics for evaluating models."""
 
-from .accuracy import Accuracy
+from .ca import ClassificationAccuracy
+from .mae import MeanAbsoluteError
 from ._base import MetricFn
 
-__all__ = ["Accuracy", "MetricFn"]
+__all__ = ["ClassificationAccuracy", "MeanAbsoluteError", "MetricFn"]
