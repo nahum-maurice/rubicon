@@ -29,5 +29,4 @@ class KARELoss(LossFn):
         mat = K_norm + z * jnp.eye(n)
         inv = jax.jit(jnp.linalg.inv, backend="cpu")(mat)
         inv2 = inv @ inv
-        return ((1 / n) * y.T @ inv2 @ y) / ((1 / n) * jnp.trace(inv)) ** 2
-        # return (1 / n) * jnp.sum(y.T @ inv2 @ y) / ((1 / n) * jnp.trace(inv)) ** 2
+        return (((1/n) * y.T @ inv2 @ y) / ((1/n) * jnp.trace(inv)) ** 2)[0, 0]

@@ -163,10 +163,10 @@ class Model:
         """
 
         @jax.jit
-        def kare_loss(x, y, z, params: PyTree):
-            K = self.compute_ntk(x, x, params)
+        def kare_loss(params: PyTree, x, y, z,):
+            K = self.compute_ntk(params, x, x)
             _loss_fn = KARELoss()
-            return _loss_fn(y, K, z).squeeze()
+            return _loss_fn(y, K, z)
 
         grad_kare = jax.grad(kare_loss)
         optimizer = config.optimizer(config.learning_rate)
@@ -181,32 +181,28 @@ class Model:
         for _ in range(config.num_epochs):
             train_iter, _ = config.data_factory()
 
-            _, unravel_fn = ravel_pytree(params)
             for x, y in train_iter:
-                grads = grad_kare(x, y, config.z, params)
-                grads = unravel_fn(grads)
+                grads = grad_kare(params, x, y, config.z)
                 updates, opt_state = optimizer.update(grads, opt_state)
                 params = optax.apply_updates(params, updates)
 
-                K = self.compute_ntk(x, x, params)
+                K = self.compute_ntk(params, x, x)
 
-                # compute train metrics on the current batch
-                train_loss = config.loss_fn(x, y, config.z, params)
-                train_pred = self.ntk_predict(K, x, x, y, config.lambd)
-                train_accuracy = config.accuracy_fn(train_pred.y, y)
-                # compute test metrics on the full test set
-                _, fresh_test_iter = config.data_factory()
+                train_preds = self.ntk_predict(params, K, x, x, y, config.lambd)
+                train_loss = config.loss_fn(y, train_preds)
+                train_accuracy = config.accuracy_fn(y, train_preds)
+
+                _, test_iter = config.data_factory()
                 test_loss_tot, test_accuracy_tot, num_examples = 0.0, 0.0, 0
-                for x_test, y_test in fresh_test_iter:
-                    tst_pred = self.ntk_predict(K, x, x_test, y, config.lambd)
-                    batch_loss = config.loss_fn(y_test, tst_pred.y)
-                    batch_accuracy = config.accuracy_fn(tst_pred.y, y_test)
-                    batch_size = y_test.shape[0]
-                    test_loss_tot += batch_loss * batch_size
-                    test_accuracy_tot += batch_accuracy * batch_size
-                    num_examples += batch_size
-                test_loss = test_loss_tot / num_examples or 0.0
-                test_accuracy = test_accuracy_tot / num_examples or 0.0
+                for x_test, y_test in test_iter:
+                    test_preds = self.ntk_predict(params, K, x, x_test, y, config.lambd)
+                    test_loss = config.loss_fn(y_test, test_preds)
+                    test_accuracy = config.accuracy_fn(y_test, test_preds)
+                    test_loss_tot += test_loss * y_test.shape[0]
+                    test_accuracy_tot += test_accuracy * y_test.shape[0]
+                    num_examples += y_test.shape[0]
+                test_loss = test_loss_tot / num_examples
+                test_accuracy = test_accuracy_tot / num_examples
 
                 history.add_training_metrics(
                     step,
@@ -244,6 +240,7 @@ class Model:
 
     def ntk_predict(
         self,
+        params: PyTree,
         K_train: jnp.ndarray,
         x_train: jnp.ndarray,
         x_test: jnp.ndarray,
@@ -264,12 +261,12 @@ class Model:
           Prediction: The prediction object containing the predicted values.
         """
         n = K_train.shape[0]
-        K_mixed = self.compute_ntk(x_train, x_test)
+        K_mixed = self.compute_ntk(params, x_train, x_test)
         inv = jnp.linalg.inv((1 / n) * K_train + lambd * jnp.eye(n))
         return (1 / n) * K_mixed @ inv @ y_train
 
     @partial(jax.jit, static_argnums=(0,))
-    def compute_gradient(self, x: jnp.ndarray, params: PyTree) -> jnp.ndarray:
+    def compute_gradient(self, params: PyTree, xs: jnp.ndarray) -> jnp.ndarray:
         """Compute the gradient vector with respect to the parameters of the
         model at a given point.
 
@@ -282,41 +279,37 @@ class Model:
         """
         assert self.initialized, "The model is not yet initialized"
 
-        # def single_output(p: PyTree, x_: jnp.ndarray):
-        #     return self.apply_fn(p, x_.reshape(1, -1))[0, 0]
+        grad_fn = jax.grad(lambda p, x: self.apply_fn(p, x).squeeze())
 
-        # grad_fn = jax.grad(single_output, argnums=0)
-
-        def flat_grad(p: PyTree, x: jnp.ndarray) -> jnp.ndarray:
-            grad_fn = jax.grad(lambda p, x: self.apply_fn(p, x).sum())
-            g_tree = grad_fn(p, x)
-            flat_g, _ = ravel_pytree(g_tree)
-            return flat_g
-
-        per_sample_grads = jax.vmap(lambda x: flat_grad(params, x))
-        return per_sample_grads(x.squeeze() if x.ndim > 1 else x)
+        def _pointwise(x):
+            flat_grads = []
+            for layer in grad_fn(params, x):
+                for part in layer:
+                    flat_grads.append(part.flatten())
+            return jnp.concatenate(flat_grads)
+        
+        per_sample = jax.vmap(_pointwise, in_axes=0)
+        return per_sample(xs)
 
     @partial(jax.jit, static_argnums=(0,))
     def compute_ntk(
-        self, x1: jnp.ndarray, x2: jnp.ndarray, params: PyTree
+        self,
+        params: PyTree,
+        xs1: jnp.ndarray,
+        xs2: jnp.ndarray,
     ) -> jnp.ndarray:
-        """Compute the NTK between two points.
+        """Compute the NTK between a batch of pairs of points.
 
         Args:
-          x1: The first input point.
-          x2: The second input point.
-          params: The model parameters.
+          xs1: The first input point.
+          xs2: The second input point.
 
         Returns:
           jnp.ndarray: The NTK between the two points.
         """
-        def _compute_ntk(x1, x2, params):
-            G1 = self.compute_gradient(x1, params)
-            G2 = self.compute_gradient(x2, params)
-            return G1 @ G2.T
-        
-        batched_ntk = jax.vmap(lambda x1, x2, p: _compute_ntk(x1, x2, p))
-        return batched_ntk(x1, x2, params)
+        G1 = self.compute_gradient(params, xs1)
+        G2 = self.compute_gradient(params, xs2)
+        return G1.dot(G2.T)
 
 
 __all__ = ["Model", "Prediction", "TrainingConfig", "TrainingHistory"]
