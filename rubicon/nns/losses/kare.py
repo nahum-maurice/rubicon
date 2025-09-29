@@ -1,5 +1,7 @@
 """Implementation of the KARE loss."""
 
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 
@@ -10,7 +12,7 @@ class KARELoss(LossFn):
     def __call__(self, y: jnp.ndarray, K: jnp.ndarray, z: float) -> float:
         return self.kare(y, K, z)
 
-    @jax.jit
+    @partial(jax.jit, static_argnums=(0,))
     def kare(self, y: jnp.ndarray, K: jnp.ndarray, z: float) -> float:
         """Computes the Kernel Alignment Risk Estimator (KARE)
 

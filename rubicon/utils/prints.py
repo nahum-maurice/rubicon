@@ -1,5 +1,6 @@
 """Implementations of utility functions for printing out in various cases"""
 
+
 def print_training_result(
     step: int,
     train_loss: float,

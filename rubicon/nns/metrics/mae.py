@@ -24,4 +24,4 @@ class MeanAbsoluteError(MetricFn):
         Returns:
           float: The mean absolute error.
         """
-        return 1 - jnp.mean(jnp.abs(preds - true)) 
+        return 1 - jnp.mean(jnp.abs(preds - true))

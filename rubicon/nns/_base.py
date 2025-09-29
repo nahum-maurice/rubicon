@@ -1,6 +1,7 @@
 """Blueprint for a generic parametrizable model."""
 
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any
 
 import jax
@@ -11,6 +12,7 @@ import optax
 from rubicon.common.types import DataArray, DataFactory, PyTree
 from rubicon.nns.losses import KARELoss, MSELoss, LossFn
 from rubicon.nns.metrics import MetricFn, MeanAbsoluteError
+from rubicon.utils.prints import print_training_result
 
 
 @dataclass
@@ -32,7 +34,7 @@ class TrainingConfig:
     with_kare: bool = False
 
 
-
+@dataclass
 class NTKTrainingConfig(TrainingConfig):
     """Additional configurations for training session using NTK."""
 
@@ -164,7 +166,7 @@ class Model:
         def kare_loss(x, y, z, params: PyTree):
             K = self.compute_ntk(x, x, params)
             _loss_fn = KARELoss()
-            return _loss_fn(y, K, z)
+            return _loss_fn(y, K, z).squeeze()
 
         grad_kare = jax.grad(kare_loss)
         optimizer = config.optimizer(config.learning_rate)
@@ -181,13 +183,14 @@ class Model:
 
             for x, y in train_iter:
                 grads = grad_kare(x, y, config.z, params)
+                # grads = jax.tree.map(jnp.array, grads)
                 updates, opt_state = optimizer.update(grads, opt_state)
                 params = optax.apply_updates(params, updates)
 
                 K = self.compute_ntk(x, x, params)
 
                 # compute train metrics on the current batch
-                train_loss = loss_fn(x, y, config.z, params)
+                train_loss = config.loss_fn(x, y, config.z, params)
                 train_pred = self.ntk_predict(K, x, x, y, config.lambd)
                 train_accuracy = config.accuracy_fn(train_pred.y, y)
                 # compute test metrics on the full test set
@@ -212,6 +215,16 @@ class Model:
                     test_accuracy,
                 )
                 step += 1
+
+                if step % 10 == 0:
+                    if config.verbose:
+                        print_training_result(
+                            step,
+                            train_loss,
+                            train_accuracy,
+                            test_loss,
+                            test_accuracy,
+                        )
         return history
 
     def custom_train(self, config: TrainingConfig) -> TrainingHistory | None:
@@ -254,7 +267,7 @@ class Model:
         inv = jnp.linalg.inv((1 / n) * K_train + lambd * jnp.eye(n))
         return (1 / n) * K_mixed @ inv @ y_train
 
-    @jax.jit
+    @partial(jax.jit, static_argnums=(0,))
     def compute_gradient(self, x: jnp.ndarray, params: PyTree) -> jnp.ndarray:
         """Compute the gradient vector with respect to the parameters of the
         model at a given point.
@@ -268,20 +281,21 @@ class Model:
         """
         assert self.initialized, "The model is not yet initialized"
 
-        def single_output(p: PyTree, x_: jnp.ndarray):
-            return self.apply_fn(p, x_.reshape(1, -1)[0, 0])
+        # def single_output(p: PyTree, x_: jnp.ndarray):
+        #     return self.apply_fn(p, x_.reshape(1, -1))[0, 0]
 
-        grad_fn = jax.grad(single_output, argnums=0)
+        # grad_fn = jax.grad(single_output, argnums=0)
 
         def flat_grad(p: PyTree, x: jnp.ndarray) -> jnp.ndarray:
+            grad_fn = jax.grad(lambda p, x: self.apply_fn(p, x)[0, 0])
             g_tree = grad_fn(p, x)
             flat_g, _ = ravel_pytree(g_tree)
             return flat_g
 
         per_sample_grads = jax.vmap(lambda x: flat_grad(params, x))
-        return per_sample_grads(x.squeeze())
+        return per_sample_grads(x.squeeze() if x.ndim > 1 else x)
 
-    @jax.jit
+    @partial(jax.jit, static_argnums=(0,))
     def compute_ntk(
         self, x: jnp.ndarray, y: jnp.ndarray, params: PyTree
     ) -> jnp.ndarray:

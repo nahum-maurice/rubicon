@@ -71,7 +71,7 @@ class MultiLayerPerceptron(Model):
         step, history = 0, TrainingHistory()
         for _ in range(config.num_epochs):
             train_iter, _ = config.data_factory()
-            
+
             for x_train, y_train in train_iter:
                 grads = grad_loss(self.params, x_train, y_train)
                 updates, opt_state = optimizer.update(grads, opt_state)
@@ -101,16 +101,16 @@ class MultiLayerPerceptron(Model):
                     test_accuracy,
                 )
                 step += 1
-                
+
                 if step % 10 == 0:
                     if config.verbose:
                         print_training_result(
                             step,
                             train_loss,
                             train_accuracy,
-                        test_loss,
-                        test_accuracy,
-                    )
+                            test_loss,
+                            test_accuracy,
+                        )
         return history
 
     def predict(self, x: DataArray) -> Prediction:

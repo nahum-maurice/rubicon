@@ -13,7 +13,6 @@ class ClassificationAccuracy(MetricFn):
     def __call__(self, preds: DataArray, true: DataArray) -> float:
         return self.accuracy(preds, true)
 
-    
     @partial(jax.jit, static_argnums=(0,))
     def accuracy(self, preds: DataArray, true: DataArray) -> float:
         """Computes the accuracy of the model.
