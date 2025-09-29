@@ -181,9 +181,10 @@ class Model:
         for _ in range(config.num_epochs):
             train_iter, _ = config.data_factory()
 
+            _, unravel_fn = ravel_pytree(params)
             for x, y in train_iter:
                 grads = grad_kare(x, y, config.z, params)
-                # grads = jax.tree.map(jnp.array, grads)
+                grads = unravel_fn(grads)
                 updates, opt_state = optimizer.update(grads, opt_state)
                 params = optax.apply_updates(params, updates)
 
@@ -287,7 +288,7 @@ class Model:
         # grad_fn = jax.grad(single_output, argnums=0)
 
         def flat_grad(p: PyTree, x: jnp.ndarray) -> jnp.ndarray:
-            grad_fn = jax.grad(lambda p, x: self.apply_fn(p, x)[0, 0])
+            grad_fn = jax.grad(lambda p, x: self.apply_fn(p, x).sum())
             g_tree = grad_fn(p, x)
             flat_g, _ = ravel_pytree(g_tree)
             return flat_g
@@ -297,21 +298,25 @@ class Model:
 
     @partial(jax.jit, static_argnums=(0,))
     def compute_ntk(
-        self, x: jnp.ndarray, y: jnp.ndarray, params: PyTree
+        self, x1: jnp.ndarray, x2: jnp.ndarray, params: PyTree
     ) -> jnp.ndarray:
         """Compute the NTK between two points.
 
         Args:
-          x: The first input point.
-          y: The second input point.
+          x1: The first input point.
+          x2: The second input point.
           params: The model parameters.
 
         Returns:
           jnp.ndarray: The NTK between the two points.
         """
-        G1 = self.compute_gradient(x, params)
-        G2 = self.compute_gradient(y, params)
-        return G1 @ G2.T
+        def _compute_ntk(x1, x2, params):
+            G1 = self.compute_gradient(x1, params)
+            G2 = self.compute_gradient(x2, params)
+            return G1 @ G2.T
+        
+        batched_ntk = jax.vmap(lambda x1, x2, p: _compute_ntk(x1, x2, p))
+        return batched_ntk(x1, x2, params)
 
 
 __all__ = ["Model", "Prediction", "TrainingConfig", "TrainingHistory"]
